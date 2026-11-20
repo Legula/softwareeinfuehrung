@@ -2,7 +2,7 @@
 # Der Container lädt beim Start den aktuellen Stand von main aus GitHub; ein Neustart des Projekts genügt als Update.
 # Umgebungsvariablen (im Hostinger Docker Manager setzen, nicht ins Repository schreiben):
 #   TRAEFIK_HOST=<Hostname des Servers>
-#   BASIC_AUTH_USER=...   BASIC_AUTH_PASS=...
+#   BASIC_AUTH_USER=...   BASIC_AUTH_PASS=...   GREMIUM_PASS=... (optional, Bereich „Offene Fragen“)
 services:
   laufkarte:
     image: node:20-alpine
@@ -21,6 +21,7 @@ services:
       - DATA_DIR=/data
       - BASIC_AUTH_USER=${BASIC_AUTH_USER}
       - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
+      - GREMIUM_PASS=${GREMIUM_PASS:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
       interval: 30s

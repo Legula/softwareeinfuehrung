@@ -161,10 +161,12 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
       <select id="role"></select>
       <button type="button" class="primary" id="fbopen">Feedback geben</button>
       <button type="button" id="fblist">Feedback-Liste (<span id="fbcount">0</span>)</button>
+      <button type="button" id="gropen" hidden>Offene Fragen 🔒</button>
       <button type="button" id="glopen">Begriffe erklärt</button>
       <button type="button" id="cfgopen">Einstellungen</button>
     </div>
   </header>
+ <div class="sub" id="roleinfo" style="margin:0 0 8px"></div>
   <nav id="links" aria-label="Weiterführende Links" hidden style="display:flex;gap:6px 16px;flex-wrap:wrap;margin:0 0 10px;font-size:.9rem"></nav>
   <div class="testbar" role="note">
     <span id="modeinfo"></span>
@@ -215,6 +217,7 @@ const DEFAULT_CFG = {
 };
 const MAX_LINKS = 5;
 const urlOk = u => /^https?:\/\/[^\s"'<>]+$/i.test(u);
+Object.keys(DEFAULT_CFG.rollen).forEach(k => { DEFAULT_CFG.rollen[k].funktion = ROLE_INFO[k]; }); // Funktion (Aufgabe im Ablauf) ist ebenfalls einstellbar
 let cfg = JSON.parse(JSON.stringify(DEFAULT_CFG));
 let ROLES = {}, SHORT = {};
 function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte legen
@@ -222,7 +225,7 @@ function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte lege
   ['titel','testmail'].forEach(k => { if (typeof x[k] === 'string') c[k] = x[k]; });
   if (typeof x.testmodus === 'boolean') c.testmodus = x.testmodus;
   if (Number.isFinite(+x.frist) && +x.frist > 0) c.frist = Math.round(+x.frist);
-  Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); } });
+  Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); if (typeof r.funktion === 'string' && r.funktion.trim()) c.rollen[k].funktion = r.funktion.trim(); } });
   Object.keys(c.begriffe).forEach(k => { if (x.begriffe && typeof x.begriffe[k] === 'string' && x.begriffe[k].trim()) c.begriffe[k] = x.begriffe[k].trim(); });
   // Links: nur http(s)-Adressen mit Titel übernehmen
   if (Array.isArray(x.links)) c.links = x.links.filter(l => l && typeof l.titel === 'string' && l.titel.trim() && typeof l.url === 'string' && urlOk(l.url.trim())).slice(0, MAX_LINKS).map(l => ({titel: l.titel.trim(), url: l.url.trim()}));
@@ -454,7 +457,7 @@ const store = {
     try {
       const r = await fetch('api/vorgaenge', {cache:'no-store'});
       if (r.ok && (r.headers.get('content-type') || '').includes('json')){
-        const d = await r.json(); this.api = true; this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; state.mode = 'server';
+        const d = await r.json(); this.api = true; this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; state.mode = 'server'; $('#gropen').hidden = !d.gremium;
         applyCfg(d.config); syncHead();
         $('#storeinfo').textContent = 'Vorgänge werden auf dem Server gespeichert und sind für alle Testenden sichtbar.';
         renderAll();
@@ -1008,23 +1011,25 @@ function secHtml(sec, v){
   } else inner += fds.map(fd => fieldHtml(fd, v)).join('');
   return `<details class="sec ${mine ? 'mine' : ''}" data-sec="${sec.n}" ${open ? 'open' : ''}><summary><div><h3>${sec.n} ${esc(sec.title)}</h3><span class="oe">${esc(sec.oe)}</span></div><span class="sumright"><button type="button" class="ghost secfb" data-act="fbsec" data-k="${sec.n}">Feedback</button>${badge}</span></summary><div class="secbody">${inner}</div></details>`;
 }
+function syncRoleInfo(){ const r = cfg.rollen[state.role]; $('#roleinfo').textContent = r ? 'Aufgabe von ' + r.label + ': ' + (r.funktion || '') : ''; }
 function syncHead(){
   const ln = $('#links'); ln.hidden = !cfg.links.length;
   ln.innerHTML = cfg.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.titel)} ↗</a>`).join('');
   $('#orgname').textContent = cfg.titel ? ' · ' + cfg.titel : '';
   $('#modeinfo').innerHTML = cfg.testmodus ? `<b>Testmodus</b> · Alle Mails gehen an ${esc(cfg.testmail)}` : `<b>Echtbetrieb-Adressen</b> · Mails gehen an die Adresse der jeweiligen Stelle`;
   const rs = $('#role'); if (!ROLES[state.role]) state.role = 'FE';
+  syncRoleInfo();
   rs.innerHTML = Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${k === state.role ? 'selected' : ''}>${esc(l)}</option>`).join('');
 }
 function renderCfg(){
   const c = state.ui.cfgDraft || cfg;
-  const row = k => `<tr><td><b>${esc(DEFAULT_CFG.rollen[k].label)}</b><div class="sub">${esc(ROLE_INFO[k])}</div></td><td><input type="text" id="cfg_l_${k}" aria-label="Bezeichnung ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].label)}"></td><td><input type="text" inputmode="email" id="cfg_m_${k}" aria-label="Mailadresse ${esc(DEFAULT_CFG.rollen[k].label)}" placeholder="postfach@example.org" value="${esc(c.rollen[k].mail)}"></td></tr>`;
+  const row = k => `<tr><td><b>${esc(DEFAULT_CFG.rollen[k].label)}</b><div class="sub">Standard: ${esc(ROLE_INFO[k])}</div></td><td><input type="text" id="cfg_f_${k}" aria-label="Funktion ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].funktion || ROLE_INFO[k])}"></td><td><input type="text" id="cfg_l_${k}" aria-label="Bezeichnung ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].label)}"></td><td><input type="text" inputmode="email" id="cfg_m_${k}" aria-label="Mailadresse ${esc(DEFAULT_CFG.rollen[k].label)}" placeholder="postfach@example.org" value="${esc(c.rollen[k].mail)}"></td></tr>`;
   const bl = {KD:'Leitung, die im Streitfall entscheidet', DA:'Dienstanweisung zur IT', BGA:'Vereinbarung zur Personalratsbeteiligung'};
   $('#main').innerHTML = `<div class="head"><div><h2>Einstellungen</h2><div class="sub">Gelten für alle, die diese Instanz nutzen. Sie werden nur hier gespeichert, nicht im Programmcode.</div></div><div><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>
   <div class="secbody" style="padding:14px 0 0">
     <div class="fld"><label class="lbl" for="cfg_titel">Name der Verwaltung (optional, erscheint im Titel)</label><input type="text" id="cfg_titel" value="${esc(c.titel)}"></div>
-    <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails.</p>
-      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Funktion</th><th>Bezeichnung</th><th>Mailadresse</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
+    <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails. Die Funktion beschreibt die Aufgabe der Stelle und steht oben neben der Rollenauswahl.</p>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Rolle im Ablauf</th><th>Funktion (Aufgabe)</th><th>Bezeichnung</th><th>Mailadresse</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
     <div class="fld"><label class="lbl">Begriffe</label><div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(cfg.begriffe).map(k => `<tr><td>${esc(bl[k])}</td><td><input type="text" id="cfg_b_${k}" aria-label="${esc(bl[k])}" value="${esc(c.begriffe[k])}"></td></tr>`).join('')}</tbody></table></div></div>
     <div class="fld"><label class="lbl">Links in der Kopfzeile</label><p class="help">Zum Beispiel Konzept, Quellcode oder Dienstanweisung. Alle, die die Laufkarte nutzen, sehen diese Links. Leere Zeilen werden ignoriert.</p>
       <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Titel</th><th>Adresse (https://…)</th></tr></thead><tbody>${Array.from({length: MAX_LINKS}, (_, i) => { const l = (c.links || [])[i] || {titel:'', url:''}; return `<tr><td><input type="text" id="cfg_lt_${i}" aria-label="Titel Link ${i + 1}" value="${esc(l.titel)}"></td><td><input type="text" inputmode="url" id="cfg_lu_${i}" aria-label="Adresse Link ${i + 1}" placeholder="https://…" value="${esc(l.url)}"></td></tr>`; }).join('')}</tbody></table></div></div>
@@ -1041,7 +1046,7 @@ function renderCfg(){
 function readCfgForm(){
   const x = {titel: $('#cfg_titel').value.trim(), testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}, links:[]};
   for (let i = 0; i < MAX_LINKS; i++){ const t = $('#cfg_lt_' + i).value.trim(), u = $('#cfg_lu_' + i).value.trim(); if (t || u) x.links.push({titel: t, url: u}); }
-  Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim()}; });
+  Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim(), funktion: $('#cfg_f_' + k).value.trim()}; });
   Object.keys(cfg.begriffe).forEach(k => { x.begriffe[k] = $('#cfg_b_' + k).value.trim(); });
   return x;
 }
@@ -1057,6 +1062,80 @@ async function saveCfgForm(x){
   const errs = checkCfg(x); if (errs.length){ state.ui.cfgErr = errs; state.ui.cfgDraft = x; renderCfg(); return; }
   state.ui.cfgErr = null; state.ui.cfgDraft = null; if (await store.saveCfg(mergeCfg(x))) toast('Einstellungen gespeichert');
 }
+// ===== Geschützter Bereich „Offene Fragen“ (nur im Serverbetrieb, eigenes Passwort) =====
+// Startliste: wird beim ersten Öffnen einmalig auf dem Server gespeichert und dort weitergepflegt
+const GR_START = [
+  ['Kosten und Haushaltsmittel','Zu Beginn sind die Kosten nicht bekannt. Ab welchem Schritt werden sie erfasst (nach Marktsicht, nach Auswahl), und wer bestätigt, dass Mittel vorhanden sind?'],
+  ['Einbindung Finanzen und Vergabestelle','Reicht der Hinweis an den Antragsteller, oder erhalten beide eine automatische Information? Ab welchem Schritt?'],
+  ['Rolle von {R141}','Genügt die Information per Mail mit Abhaken der Programmprüfung in Abschnitt 9, oder wird {R141} eine eigene Station?'],
+  ['Entscheidung durch {KD} gegen {DSB} oder {ISB}','Soll ein schriftlicher Vermerk mit ausdrücklicher Risikoübernahme Pflicht sein?'],
+  ['Ablehnung durch {R151}','Ist eine Ablehnung wegen IT-Strategie oder KO-Kriterium endgültig, oder gibt es einen Klärungsweg wie bei den anderen Stellen?'],
+  ['Wer klärt „Unklar“?','Im Prototyp klärt {R151} unklare Angaben des Antragstellers. Alternativ {R013} oder je Frage die fachlich zuständige Stelle.'],
+  ['Verbindlichkeit der Voten','Ist ein negatives Votum von {R013} oder {R15} bindend (Klärung wie im Prototyp) oder nur eine Empfehlung?'],
+  ['Beteiligung {PR}','Sind die drei Stufen keine Beteiligung, Anzeige, Zustimmung so gewollt? Welches Verfahren gilt bei verweigerter Zustimmung?'],
+  ['Reihenfolge im Pfad Neueinführung','{R112} und {PR} folgen erst nach {DSB} und {ISB}. Soll das parallel laufen wie im Pfad „vorhandene Software“?'],
+  ['KO-Kriterien und Fragebögen','Die Listen sind Platzhalter. Wer liefert die endgültigen Fassungen, und bis wann?'],
+  ['EfA-First','Gilt EfA-First verbindlich? Im Prototyp prüft {R013} bei Onlinediensten die Nachnutzung; eine Abweichung ist zu begründen.'],
+  ['Fristen','Gelten 10 Arbeitstage je Station? Was passiert bei Überschreitung (Erinnerung, Eskalation an wen)?'],
+  ['Erste Anlaufstelle für Hilfe','Wer beantwortet „Hilfe anfordern“ der Facheinheiten? Im Prototyp {R013}.'],
+  ['Protokoll und Ablage','Wer legt das Protokoll im DMS ab, zu welchem Zeitpunkt und unter welchem Aktenzeichen?'],
+  ['Rechtsgrundlage Programmprüfung','§ 104 Abs. 1 Nr. 3 GO NRW statt § 102 wie in der Vorlage. Bitte bestätigen.'],
+  ['Technische Umsetzung','Mit welchem System wird der abgestimmte Ablauf später umgesetzt, und wer prüft die Machbarkeit?']
+];
+const gr = {key: null, items: null, err: '', busy: false};
+try { gr.key = sessionStorage.getItem('lk_gr') || null; } catch(e){}
+async function grFetch(method, body){
+  const r = await fetch('api/gremium', {method, headers: Object.assign({'X-Gremium-Key': gr.key || ''}, body ? {'Content-Type':'application/json'} : {}), body: body ? JSON.stringify(body) : undefined, cache:'no-store'});
+  if (r.status === 401){ gr.key = null; gr.items = null; try { sessionStorage.removeItem('lk_gr'); } catch(e){} throw new Error('Passwort falsch'); }
+  if (!r.ok) throw new Error('Der Bereich ist nicht erreichbar');
+  return r.json();
+}
+async function grLoad(){
+  gr.busy = true; gr.err = ''; renderGr();
+  try {
+    const d = await grFetch('GET');
+    if (Array.isArray(d.items)) gr.items = d.items;
+    else { gr.items = GR_START.map(([titel, text]) => ({id: rid(), titel: T(titel), text: T(text), ok: false, ergebnis: ''})); await grFetch('PUT', {items: gr.items}); } // Startliste mit den eingestellten Bezeichnungen anlegen
+    try { sessionStorage.setItem('lk_gr', gr.key); } catch(e){}
+  } catch(e){ gr.err = e.message; }
+  gr.busy = false; if (state.view === 'gr') renderGr();
+}
+async function grSave(){ try { await grFetch('PUT', {items: gr.items}); return true; } catch(e){ gr.err = e.message; toast('Speichern fehlgeschlagen: ' + e.message); renderGr(); return false; } }
+function renderGr(){
+  const kopf = sub => `<div class="head"><div><h2>Offene Fragen</h2><div class="sub">${sub}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">${gr.items ? '<button type="button" data-act="grcopy">Als Text kopieren</button><button type="button" data-act="grlock">Bereich sperren</button>' : ''}<button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>`;
+  if (!gr.items){
+    $('#main').innerHTML = kopf('Geschützter Bereich für die Fragen, die im Gremium zu klären sind.') + `<div class="secbody" style="padding:14px 0 0;max-width:420px">
+      <div class="fld"><label class="lbl" for="gr_pw">Passwort für diesen Bereich</label><input type="password" id="gr_pw" autocomplete="off"></div>
+      ${gr.err ? `<p class="errs" style="padding:0" role="alert">${esc(gr.err)}</p>` : ''}
+      <button type="button" class="primary" data-act="grlogin" ${gr.busy ? 'disabled' : ''}>${gr.busy ? 'Prüfe …' : 'Öffnen'}</button></div>`;
+    const pw = $('#gr_pw'); if (pw){ pw.focus(); pw.addEventListener('keydown', e => { if (e.key === 'Enter') grAct({dataset:{act:'grlogin'}}); }); }
+    return;
+  }
+  const offen = gr.items.filter(x => !x.ok).length;
+  let h = kopf(`${gr.items.length} Fragen, davon ${offen} offen. Änderungen werden sofort für alle mit Zugang gespeichert.`);
+  h += gr.items.map((x, i) => `<div class="fbitem ${x.ok ? 'done' : ''}">
+      <label class="opts" style="align-items:flex-start"><input type="checkbox" data-gr="ok" data-k="${esc(x.id)}" ${x.ok ? 'checked' : ''}> <span><b>${i + 1}. ${esc(x.titel)}</b>${x.ok ? ' <span class="chip ok">geklärt</span>' : ''}<br><span class="sub">${esc(x.text)}</span></span></label>
+      <label class="lbl" for="gr_e_${esc(x.id)}" style="margin-top:8px">Ergebnis / Beschluss</label><textarea id="gr_e_${esc(x.id)}" data-gr="ergebnis" data-k="${esc(x.id)}" style="min-height:54px">${esc(x.ergebnis || '').replace(/\{/g, '&#123;')}</textarea>
+      <div style="text-align:right"><button type="button" class="ghost" data-act="grdel" data-k="${esc(x.id)}">Frage entfernen</button></div></div>`).join('');
+  h += `<div class="fbitem"><b>Frage ergänzen</b><div class="fld" style="margin-top:8px"><label class="lbl" for="gr_nt">Stichwort</label><input type="text" id="gr_nt"></div><div class="fld"><label class="lbl" for="gr_nx">Frage</label><textarea id="gr_nx" style="min-height:54px"></textarea></div><button type="button" data-act="gradd">Hinzufügen</button></div>`;
+  $('#main').innerHTML = h;
+}
+async function grAct(b){
+  const act = b.dataset.act, k = b.dataset.k;
+  if (act === 'grlogin'){ const pw = $('#gr_pw').value; if (!pw){ gr.err = 'Bitte das Passwort eingeben.'; return renderGr(); } gr.key = pw; return grLoad(); }
+  if (act === 'grlock'){ gr.key = null; gr.items = null; gr.err = ''; try { sessionStorage.removeItem('lk_gr'); } catch(e){} return renderGr(); }
+  if (act === 'grcopy') return copy(gr.items.map((x, i) => `${i + 1}. [${x.ok ? 'x' : ' '}] ${x.titel}\n   ${x.text}${x.ergebnis ? '\n   Ergebnis: ' + x.ergebnis : ''}`).join('\n\n'));
+  if (act === 'grdel'){ if (state.ui.grdel !== k){ state.ui.grdel = k; b.textContent = 'Wirklich entfernen?'; return; } gr.items = gr.items.filter(x => x.id !== k); state.ui.grdel = null; await grSave(); return renderGr(); }
+  if (act === 'gradd'){ const t = $('#gr_nt').value.trim(), x = $('#gr_nx').value.trim(); if (!t){ toast('Bitte ein Stichwort eingeben.'); return; } gr.items.push({id: rid(), titel: t, text: x, ok: false, ergebnis: ''}); await grSave(); return renderGr(); }
+}
+// Abhaken und Ergebnisfeld speichern sich selbst
+document.addEventListener('change', async e => {
+  const el = e.target; if (!el.dataset || !el.dataset.gr || !gr.items) return;
+  const x = gr.items.find(q => q.id === el.dataset.k); if (!x) return;
+  if (el.dataset.gr === 'ok'){ x.ok = el.checked; if (await grSave()) renderGr(); }
+  else if (x.ergebnis !== el.value){ x.ergebnis = el.value; if (await grSave()) toast('Gespeichert'); }
+});
+
 // ===== Glossar: Fachbegriffe in einfacher Sprache =====
 const GLOSSAR = [
   ['SaaS (Software as a Service)','Die Software läuft nicht bei uns, sondern beim Anbieter im Internet. Sie nutzen sie über den Browser. Die Daten liegen dann beim Anbieter.'],
@@ -1172,6 +1251,7 @@ function renderMain(){
   $('#fbcount').textContent = Object.values(state.fb).filter(x => x.status === 'offen').length;
   if (state.view === 'fb') return renderFbList();
   if (state.view === 'cfg') return renderCfg();
+  if (state.view === 'gr') return renderGr();
   const m = $('#main'), v = state.items[state.sel];
   if (!v){
     m.innerHTML = `<div class="empty"><h3>Kein Vorgang gewählt</h3><p>Wählen Sie links einen Vorgang. Oben stellen Sie ein, aus Sicht welcher Stelle Sie testen.</p><p class="sub">Ablauf im Test: Antrag als Antragsteller anlegen und absenden, dann Rolle wechseln ({R151}, {R013}, {R15}, {DSB}, {ISB}, {R112}) und jeweils weiterleiten. Jede Mail landet im Reiter „Mails“.</p></div>`;
@@ -1265,7 +1345,7 @@ function renderMain(){
 }
 function renderAll(){ renderList(); renderMain(); }
 // Bei Änderungen anderer: Formular nicht neu aufbauen, solange gerade getippt wird
-function renderSoft(){ renderList(); if (state.view === 'cfg') return; // Eingaben in den Einstellungen nicht überschreiben
+function renderSoft(){ renderList(); if (state.view === 'cfg' || state.view === 'gr') return; // Eingaben in den Einstellungen nicht überschreiben
   const a = document.activeElement; if (a && a.closest && a.closest('#main') && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; renderMain(); }
 
 // ===== Ereignisse =====
@@ -1297,6 +1377,8 @@ document.addEventListener('toggle', e => { const s = e.target.closest && e.targe
 document.addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'fbopen'){ openFb('Allgemein'); return; }
+  if (b.id === 'gropen'){ state.view = 'gr'; state.ui = {}; renderAll(); if (gr.key && !gr.items) grLoad(); return; }
+  if (b.dataset.act && b.dataset.act.startsWith('gr')) return grAct(b);
   if (b.id === 'glopen'){ $('#gldrawer').hidden = false; $('#fbdrawer').hidden = true; $('#gl_q').value = ''; renderGlossar(); $('#gl_q').focus(); return; }
   if (b.id === 'gl_close'){ $('#gldrawer').hidden = true; return; }
   if (b.id === 'cfgopen'){ state.view = 'cfg'; state.ui = {}; renderAll(); return; }
@@ -1347,7 +1429,7 @@ async function copy(t){ try { await navigator.clipboard.writeText(t); toast('Kop
 const rs = $('#role');
 syncHead();
 $('#gl_q').addEventListener('input', renderGlossar);
-rs.addEventListener('change', () => { state.role = rs.value; lsSet('lk_role', state.role); state.ui = {}; state.filter = 'me'; renderAll(); });
+rs.addEventListener('change', () => { state.role = rs.value; syncRoleInfo(); lsSet('lk_role', state.role); state.ui = {}; state.filter = 'me'; renderAll(); });
 
 renderAll();
 store.init();

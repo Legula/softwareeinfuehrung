@@ -14,6 +14,8 @@ Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
 **Demodaten:** „Abgeschlossenen Demovorgang erzeugen“ legt einen vollständig durchlaufenen Vorgang an. „Demodaten vorbelegen“ füllt an jeder Station die noch leeren Felder.
 
+**Offene Fragen:** Geschützter Bereich für die Fragen, die im Gremium zu klären sind: abhaken, Ergebnis festhalten, Fragen ergänzen. Er hat ein eigenes Passwort (Umgebungsvariable `GREMIUM_PASS`); ohne gesetztes Passwort ist der Bereich abgeschaltet. Die Inhalte liegen nur im Daten-Volume (`fragen.json`).
+
 **Links:** In den Einstellungen lassen sich bis zu fünf Links hinterlegen (z. B. Konzept, Quellcode), die in der Kopfzeile erscheinen.
 
 **Testmodus:** Im Testmodus gehen alle Mails an eine einzige Adresse (Standard: Platzhalter `testpostfach@example.org`). Im Prototyp werden Mails nur protokolliert und nicht verschickt.

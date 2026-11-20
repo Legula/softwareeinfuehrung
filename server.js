@@ -10,11 +10,14 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'vorgaenge.json');
 const FB_FILE = path.join(DATA_DIR, 'feedback.json');
+const GR_FILE = path.join(DATA_DIR, 'fragen.json');   // offene Fragen für das Gremium (nur mit eigenem Passwort lesbar)
 const CFG_FILE = path.join(DATA_DIR, 'config.json'); // Einstellungen (Bezeichnungen, Mailadressen); liegen nur im Daten-Volume
 const PUBLIC_DIR = path.join(__dirname, 'public');
 // Optionaler Passwortschutz (HTTP Basic Auth); leer = kein Schutz
 const AUTH_USER = process.env.BASIC_AUTH_USER || '';
 const AUTH_PASS = process.env.BASIC_AUTH_PASS || '';
+// Eigenes Passwort für den geschützten Bereich „Offene Fragen“; leer = Bereich abgeschaltet
+const GREMIUM_PASS = process.env.GREMIUM_PASS || '';
 const MAX_BODY = 512 * 1024; // max. 512 KB je Vorgang
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -26,6 +29,8 @@ let feedback = {};
 try { feedback = JSON.parse(fs.readFileSync(FB_FILE, 'utf8')); } catch (e) { feedback = {}; }
 let config = null; // null = Standardwerte der Oberfläche
 try { config = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (e) { config = null; }
+let fragen = null; // null = noch nie gespeichert, die Oberfläche legt dann die Startliste an
+try { fragen = JSON.parse(fs.readFileSync(GR_FILE, 'utf8')); } catch (e) { fragen = null; }
 let rev = Date.now();
 
 function persist(file, data) {
@@ -97,7 +102,23 @@ const server = http.createServer(async (req, res) => {
 
   // API: Liste aller Vorgänge
   if (url.pathname === '/api/vorgaenge' && req.method === 'GET') {
-    return send(res, 200, { rev, items, feedback, config });
+    return send(res, 200, { rev, items, feedback, config, gremium: !!GREMIUM_PASS });
+  }
+  // API: geschützter Bereich „Offene Fragen“; das Passwort kommt mit jeder Anfrage im Kopf X-Gremium-Key
+  if (url.pathname === '/api/gremium') {
+    if (!GREMIUM_PASS) return send(res, 404, { error: 'Bereich ist nicht eingerichtet' });
+    const key = String(req.headers['x-gremium-key'] || '');
+    if (!safeEqual(key, GREMIUM_PASS)) { await new Promise(r => setTimeout(r, 700)); return send(res, 401, { error: 'Passwort falsch' }); } // Verzögerung bremst Ausprobieren
+    if (req.method === 'GET') return send(res, 200, { items: fragen });
+    if (req.method === 'PUT') {
+      try {
+        const doc = JSON.parse(await readBody(req));
+        if (!doc || !Array.isArray(doc.items) || doc.items.length > 200) return send(res, 400, { error: 'ungültige Liste' });
+        fragen = doc.items; const r0 = rev; persist(GR_FILE, fragen); rev = r0; // rev nicht ändern: kein Neuladen bei allen anderen
+        return send(res, 200, { ok: true });
+      } catch (e) { return send(res, 400, { error: 'ungültige Daten' }); }
+    }
+    return send(res, 405, { error: 'Methode nicht erlaubt' });
   }
   // API: Einstellungen speichern
   if (url.pathname === '/api/config') {
