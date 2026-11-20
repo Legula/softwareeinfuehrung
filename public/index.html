@@ -129,6 +129,11 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
 .mail .subj{font-weight:600;margin:4px 0}
 .mail pre{white-space:pre-wrap;font-family:var(--font-body);font-size:.85rem;margin:6px 0 0;color:var(--muted)}
 [hidden]{display:none!important}
+.proto h1{font-size:1.25rem;margin:0 0 4px}.proto h2{font-size:1rem;margin:18px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}
+.proto table{border-collapse:collapse;width:100%;margin:0 0 6px}.proto th,.proto td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top;font-size:.85rem}
+.proto th{background:#eee;color:#111;width:34%}.proto .lz th{width:auto}.proto .meta{color:#444;margin:0 0 10px;font-size:.85rem}.proto ul{margin:0;padding-left:18px}.proto .pre{white-space:pre-wrap}
+#printarea{background:#fff;color:#111;padding:0}
+@media print{body.printing>*:not(#printarea){display:none!important}body.printing{background:#fff}}
 #links a{color:var(--accent)}
 .drawer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;z-index:15;padding:16px;display:grid;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
 .drawer h3{margin:0;font-size:1.05rem}
@@ -155,6 +160,7 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
       <select id="role"></select>
       <button type="button" class="primary" id="fbopen">Feedback geben</button>
       <button type="button" id="fblist">Feedback-Liste (<span id="fbcount">0</span>)</button>
+      <button type="button" id="glopen">Begriffe erklärt</button>
       <button type="button" id="cfgopen">Einstellungen</button>
     </div>
   </header>
@@ -186,6 +192,13 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
   <div><label class="lbl" for="fb_name">Ihr Name (optional)</label><input type="text" id="fb_name"></div>
   <div style="display:flex;gap:8px"><button type="button" class="primary" id="fb_send">Feedback speichern</button><button type="button" id="fb_cancel">Abbrechen</button></div>
 </div>
+<div class="drawer panel" id="gldrawer" hidden role="dialog" aria-label="Begriffe erklärt">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Begriffe kurz erklärt</h3><button type="button" id="gl_close">Schließen</button></div>
+  <input type="text" id="gl_q" placeholder="Begriff suchen …" aria-label="Begriff suchen">
+  <dl id="gl_list" style="margin:0;display:grid;gap:10px"></dl>
+  <p class="sub" style="margin:0">Etwas fehlt oder bleibt unklar? Nutzen Sie im Antrag „Hilfe anfordern“.</p>
+</div>
+<div id="printarea" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -228,6 +241,11 @@ const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
 // Status: Bezeichnung und welche Stationen gleichzeitig zuständig sind
 const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', V3:'Bereitstellung', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahme', N3:'Organisation und {PR}', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Abgeschlossen, eingeführt'};
 const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], V3:['R15'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB'], N3:['R112'], N4:['FE'], S90:[], S99:[]};
+// Wirksame Angaben: „Unklar“ des Antragstellers wird durch die Klärung der Prüfstation ersetzt
+const KO_UNKLAR = f => !!f.ko && Object.values(f.ko).includes('unklar');
+const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
+const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
+const PR_ABGELEHNT = f => f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'nein';
 const FINAL = s => s === 'S90' || s === 'S99';
 
 const JNU = [['ja','Ja'],['nein','Nein'],['unklar','Unklar']];
@@ -238,21 +256,21 @@ const has = (a, x) => Array.isArray(a) && a.includes(x);
 // ===== Abschnitte =====
 const SECS = [
   {n:1, title:'Bedarfsmeldung', oe:'Antragsteller', when:()=>true,
-   intro:'Beschreiben Sie kurz, was Sie brauchen und warum. Ausfüllzeit etwa 10 Minuten. Beschaffung, Haushaltsmittel und Vergabe klären Sie bitte parallel wie gewohnt (bei Bedarf mit 20 und der Vergabestelle).'},
+   intro:'Beschreiben Sie kurz, was Sie brauchen und warum. Ausfüllzeit etwa 10 Minuten. IT-Kenntnisse brauchen Sie dafür nicht: Kommen Sie nicht weiter, nutzen Sie unten „Hilfe anfordern“. Beschaffung, Haushaltsmittel und Vergabe klären Sie bitte parallel wie gewohnt (bei Bedarf mit 20 und der Vergabestelle).'},
   {n:2, title:'Einordnung und KO-Kriterien', oe:'Antragsteller', when:()=>true,
-   intro:'Diese Angaben entscheiden, welche Stellen beteiligt werden. Wenn Sie unsicher sind, wählen Sie „Unklar“. Das ist kein Nachteil; die Digitalisierung klärt es mit Ihnen.'},
+   intro:'Diese Angaben entscheiden, welche Stellen beteiligt werden. Wenn Sie unsicher sind, wählen Sie „Unklar“. Das ist kein Nachteil; {R013} klärt es mit Ihnen. Fachbegriffe finden Sie oben unter „Begriffe erklärt“.'},
   {n:3, title:'Prüfung vorhandene Lösung', oe:'{R151}', when:v=>v.status!=='S0',
    intro:'Gibt es in der Verwaltung schon eine Lösung, die den Bedarf deckt und sofort nutzbar ist? Ihre Entscheidung legt den weiteren Weg fest.'},
   {n:4, title:'Fortschreibung Neueinführung', oe:'{R013} und {R15}', when:v=>has(v.reached,'N1'),
    intro:'{R013} und {R15} bearbeiten ihre Teile parallel, gern gemeinsam mit dem Antragsteller. Die Stellungnahmen werden Bestandteil des Beschaffungsvorgangs.'},
   {n:5, title:'Auswahlprozess', oe:'Antragsteller', when:v=>has(v.reached,'B1'),
    intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz.'},
-  {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'{DSB} und {ISB}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
+  {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'{DSB} und {ISB}, nach einem Auswahlprozess auch {R15}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
    intro:'{DSB} und {ISB} arbeiten parallel. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
   {n:7, title:'Organisation und Personalrat', oe:'{R112}', when:v=>has(v.reached,'V12')||has(v.reached,'N3'),
    intro:'Prüfung organisatorischer Auswirkungen und Steuerung der Beteiligung {PR} nach {BGA}.'},
   {n:8, title:'Klärung nach Ablehnung', oe:'Antragsteller', when:v=>has(v.reached,'N4'),
-   intro:'{DSB} oder {ISB} haben nicht zugestimmt. Klären Sie die offenen Punkte, legen Sie den Antrag überarbeitet erneut vor, holen Sie eine Entscheidung durch {KD} ein oder ziehen Sie ihn zurück.'},
+   intro:'Mindestens eine Stelle hat nicht zugestimmt; welche, steht im Hinweis oben. Klären Sie die offenen Punkte mit dieser Stelle, legen Sie den Antrag überarbeitet erneut vor, holen Sie eine Entscheidung durch {KD} ein oder ziehen Sie ihn zurück.'},
   {n:9, title:'Zustimmungen und Zulassungen Dritter', oe:'Antragsteller pflegt, {R15} prüft vor Bereitstellung', when:v=>v.status!=='S0',
    intro:'Hier haken Sie Zustimmungen und Zulassungen ab, die außerhalb dieser Laufkarte erteilt werden. Pflichtpunkte ergeben sich automatisch aus Ihren Angaben und den Stellungnahmen. Sie können den Abschnitt jederzeit pflegen, unabhängig davon, wo die Laufkarte gerade liegt. {R15} kann die Bereitstellung erst bestätigen, wenn alle Pflichtpunkte erledigt sind.'},
   {n:10, title:'Bereitstellung und Kataster', oe:'{R15}', when:v=>has(v.reached,'V3'),
@@ -266,7 +284,8 @@ const FIELDS = [
   {id:'fe_oe', sec:1, own:'FE', st:['S0'], t:'text', l:'Organisationseinheit', req:1, h:'Im Echtbetrieb aus dem Login vorbelegt.'},
   {id:'fe_kontakt', sec:1, own:'FE', st:['S0'], t:'text', l:'Ansprechperson', req:1},
   {id:'vorhaben', sec:1, own:'FE', st:['S0'], t:'text', l:'Bezeichnung des Vorhabens', req:1, h:'Kurz und sprechend, z. B. „Digitale Terminvergabe Kfz-Zulassung“.'},
-  {id:'bedarf', sec:1, own:'FE', st:['S0'], t:'textarea', l:'Kurzbeschreibung des Bedarfs', req:1},
+  {id:'bedarf', sec:1, own:'FE', st:['S0'], t:'textarea', l:'Kurzbeschreibung des Bedarfs', req:1,
+   h:'Welche Aufgabe soll die Software unterstützen? Schreiben Sie in Ihren Worten, ohne Fachbegriffe und ohne Produktnamen.'},
   {id:'anlass', sec:1, own:'FE', st:['S0'], t:'radio', l:'Anlass', req:1, opts:[['verbesserung','Verbesserung eines bestehenden Ablaufs'],['vorgabe','Vorgabe von Land oder Bund'],['neu','Neue Aufgabe']], col:1,
    h:'Software wird nur eingeführt, wenn sie etwas verbessert oder vorgeschrieben ist.'},
   {id:'vorgabe', sec:1, own:'FE', st:['S0'], t:'text', l:'Vorgabe bzw. Rechtsgrundlage', req:1, show:f=>f.anlass==='vorgabe'},
@@ -278,7 +297,8 @@ const FIELDS = [
    h:'Z. B. „4.000 Termine × 15 Minuten“.'},
   {id:'vza_verwendung', sec:1, own:'FE', st:['S0'], t:'radio', l:'Wofür wird die freiwerdende Kapazität genutzt? (optional)', col:1, show:f=>f.anlass!=='neu'&&f.vza&&f.vza.trim()!=='0',
    opts:[['entlastung','Entlastung bei steigenden Fallzahlen oder Rückständen'],['umschichtung','Umschichtung in andere Aufgaben'],['einsparung','Stelleneinsparung möglich'],['offen','Noch offen']]},
-  {id:'anf_katalog', sec:1, own:'FE', st:['S0'], t:'file', l:'Anforderungskatalog (optional)'},
+  {id:'anf_katalog', sec:1, own:'FE', st:['S0'], t:'file', l:'Anforderungskatalog (optional)',
+   h:'Liste dessen, was die Software können muss. Stichpunkte genügen. Wenn Sie keinen haben, hilft {R013} beim Erstellen.'},
   {id:'produkt_wunsch', sec:1, own:'FE', st:['S0'], t:'text', l:'Produkt, falls schon bekannt (optional)', h:'Beschleunigt die Prüfung, ist aber keine Vorentscheidung.'},
   {id:'verantwortlich', sec:1, own:'FE', st:['S0'], t:'text', l:'Fachverfahrensverantwortliche Person', req:1, h:'Ist nach der Einführung zuständig für Pflege, Berechtigungen und die regelmäßige Prüfung, ob die Software noch passt. Wird ins Softwarekataster übernommen.'},
   {id:'nutzer', sec:1, own:'FE', st:['S0'], t:'text', l:'Wer nutzt die Software, wie viele Personen etwa?', req:1, h:'Z. B. „Sachbearbeitung, ca. 12 Personen“.'},
@@ -286,19 +306,20 @@ const FIELDS = [
   // Abschnitt 2
   {id:'art', sec:2, own:'FE', st:['S0'], t:'checks', l:'Art des Vorhabens', req:1, col:1,
    opts:[['saas','SaaS: Software läuft beim Anbieter im Internet'],['onprem','On-Premise: Software läuft im eigenen Rechenzentrum'],['schnittstelle','Schnittstelle zu einem anderen Programm'],['betriebsart','Änderung der Betriebsart (z. B. On-Premise zu SaaS)'],['modul','Neues Modul einer vorhandenen Software'],['portal','Nutzung eines Portals Dritter'],['hardware','Reine Hardware']],
-   h:'Mehrfachauswahl möglich.'},
+   h:'Mehrfachauswahl möglich. Wenn Sie unsicher sind, was zutrifft: „Begriffe erklärt“ oben oder „Hilfe anfordern“ unten.'},
   {id:'hw_hinweis', sec:2, t:'info', kind:'warn', l:'Reine Hardware läuft über das Hardware-Formular. Dieser Antrag kann so nicht abgesendet werden.', show:f=>Array.isArray(f.art)&&f.art.length===1&&f.art[0]==='hardware'},
   {id:'schnittstelle', sec:2, own:'FE', st:['S0'], t:'textarea', l:'Betroffene Systeme und Folgeabschätzung', req:1, show:f=>has(f.art,'schnittstelle'),
    h:'Welche Programme sind betroffen, welche Daten fließen in welche Richtung, was passiert bei Ausfall?'},
   {id:'betriebsart_alt', sec:2, own:'FE', st:['S0'], t:'text', l:'Bisherige Software und Betriebsart', req:1, show:f=>has(f.art,'betriebsart')||has(f.art,'modul'), h:'Im Echtbetrieb Auswahl aus dem Softwarekataster.'},
-  {id:'portal', sec:2, own:'FE', st:['S0'], t:'text', l:'Portal und Betreiber', req:1, show:f=>has(f.art,'portal')},
+  {id:'portal', sec:2, own:'FE', st:['S0'], t:'text', l:'Portal und Betreiber', req:1, show:f=>has(f.art,'portal'),
+   h:'Name des Portals und wer es betreibt, z. B. ein Landesportal.'},
   {id:'pbd', sec:2, own:'FE', st:['S0'], t:'radio', l:'Werden personenbezogene Daten verarbeitet?', req:1, opts:JNU,
    h:'Ja, sobald Namen, Adressen, personenbezogene Aktenzeichen oder Daten von Beschäftigten verarbeitet werden.'},
   {id:'ds_vor', sec:2, own:'FE', st:['S0'], t:'q', l:'Datenschutz-Vorprüfung', req:1, show:f=>f.pbd&&f.pbd!=='nein', answers:[['ja','Ja'],['nein','Nein'],['unklar','Weiß nicht']],
    items:['Daten werden außerhalb der EU/des EWR verarbeitet','Besondere Kategorien (z. B. Gesundheit, Sozialdaten)','Schutzbedürftige Personen betroffen (z. B. Kinder)','Automatisierte Entscheidungen oder Profiling','Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich','Hersteller oder Dienstleister stellt eine Datenschutz-Folgenabschätzung bereit'],
    h:'Hilft {DSB} und {PR}, früh einzuschätzen, ob eine Folgenabschätzung oder Zustimmung nötig ist. „Weiß nicht“ ist ausdrücklich erlaubt.'},
   {id:'fin', sec:2, own:'FE', st:['S0'], t:'radio', l:'Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:JNU,
-   h:'Dann prüft die Rechnungsprüfung ({R141}) das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der GPA NRW.'},
+   h:'Dann prüft {R141} das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der GPA NRW.'},
   {id:'ko', sec:2, own:'FE', st:['S0'], t:'q', l:'KO-Kriterien', req:1, answers:[['ja','Erfüllt'],['unklar','Unklar'],['nein','Nicht erfüllt']],
    items:['Kein Verstoß gegen Innenrecht (z. B. {DA})','Kein Parallelprodukt zu einer in der Verwaltung eingesetzten Lösung, soweit bekannt (One-Product-Strategie)','Bei personenbezogenen Daten: Verarbeitung in EU/EWR, Auftragsverarbeitungsvertrag möglich','Rollen- und Rechtekonzept sowie Protokollierung vorhanden','Barrierefreiheit nach BITV NRW, sofern relevant'],
    h:'„Nicht erfüllt“ sperrt das Absenden. „Unklar“ ist erlaubt und wird von {R013} und {R151} geklärt. Platzhalter, bis die Fachlichkeiten die finale Liste liefern.'},
@@ -306,15 +327,23 @@ const FIELDS = [
   {id:'chk_151', sec:3, own:'R151', st:['S1'], t:'checks', l:'Prüfschritte', req:'all', col:1, opts:[['kataster','Softwarekataster auf vorhandene Lösungen geprüft'],['lizenz','Lizenzlage geprüft'],['strategie','Abgleich mit der IT-Strategie erfolgt']]},
   {id:'strategie', sec:3, own:'R151', st:['S1'], t:'radio', l:'Passt das Vorhaben zur IT-Strategie?', req:1, opts:[['ja','Ja'],['nein','Nein, Ablehnung']]},
   {id:'strategie_begr', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Begründung der Ablehnung', req:1, show:f=>f.strategie==='nein'},
-  {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja',
+  {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f),
    opts:[['vorhanden','Vorhandene Software ist unmittelbar nutzbar (Lizenzen vorhanden)'],['neu','Neueinführung erforderlich']]},
-  {id:'sw_vorhanden', sec:3, own:'R151', st:['S1'], t:'text', l:'Vorhandene Software', req:1, show:f=>f.verfahren==='vorhanden'&&f.strategie==='ja'},
+  {id:'sw_vorhanden', sec:3, own:'R151', st:['S1'], t:'text', l:'Vorhandene Software', req:1, show:f=>f.verfahren==='vorhanden'&&f.strategie==='ja'&&!KO_ABGELEHNT(f)},
+  {id:'unklar_info', sec:3, t:'info', kind:'warn', l:'Der Antragsteller hat Angaben mit „Unklar“ beantwortet. Bitte klären Sie diese jetzt verbindlich, bei Bedarf per Rückfrage an {DSB}, {R141} oder den Antragsteller.', show:f=>f.pbd==='unklar'||f.fin==='unklar'||KO_UNKLAR(f)},
+  {id:'pbd_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: Werden personenbezogene Daten verarbeitet?', req:1, opts:[['ja','Ja'],['nein','Nein']], show:f=>f.pbd==='unklar',
+   h:'Im Zweifel „Ja“. Dann prüft {DSB} wie gewohnt.'},
+  {id:'fin_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:[['ja','Ja'],['nein','Nein']], show:f=>f.fin==='unklar',
+   h:'Bei „Ja“ werden Programmprüfung durch {R141} und GPA-Zulassung zu Pflichtpunkten in Abschnitt 9.'},
+  {id:'ko_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: unklare KO-Kriterien', req:1, col:1, opts:[['ja','Alle unklaren Kriterien sind erfüllt'],['nein','Mindestens ein Kriterium ist nicht erfüllt (Ablehnung)']], show:f=>KO_UNKLAR(f)},
+  {id:'ko_klar_doku', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Ergebnis der Klärung', req:1, show:f=>KO_UNKLAR(f),
+   h:'Kurz festhalten, wie die unklaren Punkte geklärt wurden und mit wem.'},
   {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
   // Abschnitt 4: {R013}
   {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU,
    items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Onlinezugang (OZG) betroffen','Nutzen ist messbar beschrieben']},
   {id:'stn_013', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Stellungnahme {R013}', req:1},
-  {id:'votum_013', sec:4, own:'R013', st:['N1'], t:'radio', l:'Votum {R013}', req:1, opts:VOTUM_B},
+  {id:'votum_013', sec:4, own:'R013', st:['N1'], t:'radio', l:'Votum {R013}', req:1, opts:VOTUM_B, h:'„Nicht befürwortet“ führt zur Klärung beim Antragsteller. Die Gründe gehören in die Stellungnahme.'},
   {id:'ergebnis', sec:4, own:'R013', st:['N1'], t:'radio', l:'Ergebnis der Marktsicht', req:1, col:1,
    opts:[['A','A: Fachlich kommt nur eine Software in Frage'],['B','B: Mehrere Produkte kommen in Frage, Antragsteller führt Auswahl durch']],
    h:'Bei B beteiligt der Antragsteller die Stellen im Auswahlprozess selbst; danach folgt die abschließende Stellungnahme von {DSB} und {ISB}.'},
@@ -325,7 +354,7 @@ const FIELDS = [
   {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU,
    items:['Betriebsart ist geklärt','Anmeldung über zentrale Benutzerverwaltung möglich','Schnittstellen sind beschrieben','Datensicherung und Wiederherstellung geregelt','Arbeitsplatz-Anforderungen erfüllt']},
   {id:'stn_15', sec:4, own:'R15', st:['N1'], t:'textarea', l:'Stellungnahme {R15}', req:1},
-  {id:'votum_15', sec:4, own:'R15', st:['N1'], t:'radio', l:'Votum {R15}', req:1, opts:VOTUM_B},
+  {id:'votum_15', sec:4, own:'R15', st:['N1'], t:'radio', l:'Votum {R15}', req:1, opts:VOTUM_B, h:'„Nicht befürwortet“ führt zur Klärung beim Antragsteller. Die Gründe gehören in die Stellungnahme.'},
   {id:'anlage_15', sec:4, own:'R15', st:['N1'], t:'file', l:'Anlage (optional)'},
   // Abschnitt 5
   {id:'bet', sec:5, own:'FE', st:['B1'], t:'q', l:'Beteiligung je Stelle', req:1, answers:[['ja','Erfolgt'],['nein','Nicht erforderlich']],
@@ -350,6 +379,10 @@ const FIELDS = [
   {id:'auflagen_isb', sec:6, own:'ISB', st:['V12','N2'], t:'textarea', l:'Auflagen {ISB}', req:1, show:f=>f.votum_isb==='auflagen', h:'Eine Auflage je Zeile.'},
   {id:'empf_isb', sec:6, own:'ISB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung {ISB}', req:1, show:f=>f.votum_isb==='nein'},
   {id:'anlage_isb', sec:6, own:'ISB', st:['V12','N2'], t:'file', l:'Stellungnahme als Anlage (optional)'},
+  // Abschnitt 6: IT bestätigt nach einem Auswahlprozess das gewählte Produkt
+  {id:'it_ok', sec:6, own:'R15', st:['N2'], t:'radio', l:'Technische Bestätigung des ausgewählten Produkts', req:1, opts:VOTUM_B, show:f=>f.ergebnis==='B',
+   h:'Die technische Stellungnahme entstand vor der Auswahl. Bitte bestätigen, dass das gewählte Produkt die Anforderungen erfüllt.'},
+  {id:'it_ok_text', sec:6, own:'R15', st:['N2'], t:'textarea', l:'Auflagen bzw. Begründung {R15}', req:1, show:f=>f.ergebnis==='B'&&!!f.it_ok&&f.it_ok!=='ja'},
   // Abschnitt 7
   {id:'org_auswirk', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
   {id:'stn_112', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
@@ -357,8 +390,11 @@ const FIELDS = [
    opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach {BGA} erforderlich']],
    h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit {PR} abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
   {id:'pr_datum', sec:7, own:'R112', st:['V12','N3'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
+  {id:'pr_ergebnis', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Ergebnis der Beteiligung {PR}', req:1, opts:[['ja','Zugestimmt'],['nein','Nicht zugestimmt']], show:f=>f.pr_stufe==='zustimmung',
+   h:'Erst eintragen, wenn das Ergebnis vorliegt; bis dahin „Zwischenspeichern“. Bei „Nicht zugestimmt“ geht der Vorgang zur Klärung an den Antragsteller.'},
+  {id:'pr_begr', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
   // Abschnitt 8
-  {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, opts:[['erneut','Überarbeitet erneut {DSB} und {ISB} vorlegen'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
+  {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, opts:[['erneut','Überarbeitet erneut vorlegen (geht an die Stellen, die nicht zugestimmt haben)'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
   {id:'klaerung_doku', sec:8, own:'FE', st:['N4'], t:'textarea', l:'Dokumentation der Klärung', req:1},
   {id:'kd_entscheidung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Entscheidung durch {KD}', req:1, opts:[['freigabe','Freigabe'],['ablehnung','Ablehnung']], show:f=>f.klaerung==='kd'},
   {id:'kd_vermerk', sec:8, own:'FE', st:['N4'], t:'file', l:'Vermerk {KD} (optional)', show:f=>f.klaerung==='kd'},
@@ -511,14 +547,39 @@ function worstVotum(f){
 function auflagenListe(f){
   const out = [];
   [['DSB', f.votum_dsb === 'auflagen' ? f.auflagen_dsb : ''], ['ISB', f.votum_isb === 'auflagen' ? f.auflagen_isb : ''],
-   ['{R013}', f.votum_013 === 'auflagen' ? f.stn_013 : ''], ['{R15}', f.votum_15 === 'auflagen' ? f.stn_15 : '']]
+   ['{R013}', f.votum_013 === 'auflagen' ? f.stn_013 : ''], ['{R15}', f.votum_15 === 'auflagen' ? f.stn_15 : ''], ['{R15}', f.ergebnis === 'B' && f.it_ok === 'auflagen' ? f.it_ok_text : '']]
     .forEach(([w, t]) => (t || '').split('\n').map(s => s.trim()).filter(Boolean).forEach(s => out.push(w + ': ' + s)));
   return out;
 }
 // Übergang, wenn alle Stationen des aktuellen Status erledigt sind
-function transition(v){
-  const f = v.f, from = v.status;
+// Wer hat in der Station „from“ nicht zugestimmt?
+function rejectors(v, from){
+  const f = v.f, r = [];
+  if (from === 'N1'){ if (f.votum_013 === 'nein') r.push('R013'); if (f.votum_15 === 'nein') r.push('R15'); }
+  if (from === 'V12' || from === 'N2'){ if (f.votum_dsb === 'nein') r.push('DSB'); if (f.votum_isb === 'nein') r.push('ISB'); }
+  if (from === 'N2' && f.ergebnis === 'B' && f.it_ok === 'nein') r.push('R15');
+  if ((from === 'V12' || from === 'N3') && PR_ABGELEHNT(f)) r.push('R112');
+  return r;
+}
+// Übergang, wenn alle Stationen des aktuellen Status erledigt sind.
+// from/freigabe werden nur gesetzt, wenn die Leitung nach einer Klärung freigibt: dann geht es weiter, als hätten alle zugestimmt.
+function transition(v, from = v.status, freigabe = false){
+  const f = v.f;
   const go = st => { enter(v, st); log(v, 'System', 'Weiter an: ' + ST[st]); };
+  const rpaInfo = txt => { if (f.gonrw || FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', txt); };
+  const consentMail = () => { if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.'); };
+  // Nicht zugestimmt: Klärung beim Antragsteller, egal in welchem Pfad
+  const neg = freigabe ? [] : rejectors(v, from);
+  if (neg.length){
+    v.kl = {from, who: neg};
+    ['klaerung','klaerung_doku','kd_entscheidung','kd_vermerk'].forEach(k => delete f[k]);
+    go('N4');
+    const namen = neg.map(r => r === 'R112' ? SHORT.PR : SHORT[r]).join(', ');
+    mail(v, 'FE', 'Klärung: nicht zugestimmt', 'hat keine Zustimmung erhalten von: ' + namen + '. Bitte klären Sie das weitere Vorgehen in Abschnitt 8.');
+    [...new Set(['R112','R013','R15'])].filter(r => !neg.includes(r)).forEach(r => mail(v, r, 'Zur Information: nicht zugestimmt', 'hat keine Zustimmung erhalten von: ' + namen + '.'));
+    return;
+  }
+  const frei = freigabe ? ' (Freigabe {KD})' : '';
   switch (from){
     case 'S0':
       go('S1');
@@ -526,32 +587,35 @@ function transition(v){
       mail(v, 'FE', 'Eingangsbestätigung', 'ist eingegangen. Sie sehen den Stand jederzeit in der Laufkarte.'); break;
     case 'S1':
       if (f.strategie === 'nein'){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: passt nicht zur IT-Strategie', 'wurde von {R151} abgelehnt.')); }
-      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); if (f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als finanzrelevant gekennzeichnet.'); }
-      else { go('N1'); if (f.fin === 'ja' && f.gonrw === undefined) f.gonrw = true; mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
+      else if (KO_ABGELEHNT(f)){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: KO-Kriterium nicht erfüllt', 'wurde nach Klärung der KO-Kriterien abgelehnt.')); }
+      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); if (FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als finanzrelevant gekennzeichnet.'); }
+      else { go('N1'); if (FIN(f) && f.gonrw === undefined) f.gonrw = true; mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
       break;
     case 'V12':
-      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen');
-      if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.');
-      mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', 'wurde von allen Stellen bearbeitet. Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
+      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen' + frei); consentMail();
+      mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', (freigabe ? 'wurde durch {KD} freigegeben.' : 'wurde von allen Stellen bearbeitet.') + ' Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
     case 'N1':
-      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
-      else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren'); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
+      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
+      else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren' + frei); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
       break;
     case 'B1':
-      go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); break;
+      // nach dem Auswahlprozess bestätigt die IT zusätzlich das gewählte Produkt
+      go('N2'); v.open = ['DSB','ISB','R15']; ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); mail(v, 'R15', 'Ausgewähltes Produkt technisch bestätigen', 'hat den Auswahlprozess abgeschlossen. Gewählt wurde: ' + (f.produkt_b || 'siehe Abschnitt 5') + '.'); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); break;
     case 'N2':
-      if (worstVotum(f) === 'nein'){ go('N4'); mail(v, 'FE', 'Klärung nach Ablehnung'); ['R112','R013','R15'].forEach(r => mail(v, r, 'Zur Information: nicht zugestimmt', 'hat keine Zustimmung von {DSB} oder {ISB} erhalten.')); }
-      else { go('N3'); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen'); mail(v, 'FE', 'Zur Information: Zustimmung {DSB} und {ISB}', 'hat die Zustimmung von {DSB} und {ISB} erhalten.'); }
-      break;
+      go('N3'); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen' + frei); mail(v, 'FE', 'Zur Information: weiter an {R112}', freigabe ? 'wurde durch {KD} freigegeben.' : 'hat die Zustimmung von {DSB} und {ISB} erhalten.'); break;
     case 'N3':
-      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen');
-      if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.');
+      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen' + frei); consentMail();
       mail(v, 'FE', 'Rückmeldung mit Auflagen', 'ist freigegeben. Bitte beachten Sie die Auflagen.'); break;
-    case 'N4':
-      if (f.klaerung === 'erneut'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Erneute abschließende Stellungnahme', 'wurde überarbeitet erneut vorgelegt.')); }
-      else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){ go('N3'); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen (Freigabe {KD})'); }
+    case 'N4': {
+      const kl = v.kl || {from: 'N2', who: ['DSB','ISB']};
+      if (f.klaerung === 'erneut'){
+        // zurück an die Station der Ablehnung, aber nur an die Stellen, die nicht zugestimmt haben
+        go(kl.from); v.open = kl.who.slice();
+        kl.who.forEach(r => mail(v, r, 'Erneute Vorlage nach Klärung', 'wurde überarbeitet erneut vorgelegt. Bitte prüfen Sie Ihr Votum.'));
+      }
+      else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){ log(v, 'System', 'Freigabe durch {KD} trotz fehlender Zustimmung von ' + kl.who.map(r => SHORT[r]).join(', ')); transition(v, kl.from, true); }
       else { go('S90'); ['R112','R013','R15','DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Vorgang beendet', 'wurde ohne Einführung beendet.')); }
-      break;
+      break; }
     case 'V3':
       go('S99'); mail(v, 'FE', 'Software bereitgestellt', 'ist abgeschlossen. Die Software steht bereit.'); mail(v, 'R013', 'Zur Information: Einführung abgeschlossen', 'ist abgeschlossen.'); mail(v, 'KAT', 'Aufnahme ins Softwarekataster', 'ist abgeschlossen und wurde für das Kataster gemeldet.'); break;
   }
@@ -561,9 +625,9 @@ function transition(v){
 function consentItems(f){
   const dsb = f.chk_dsb || {}, isb = f.chk_isb || {};
   return [
-    {k:'gpa', l:'Zulassung der GPA NRW (Finanzsoftware)', rg:'§ 94 Abs. 2 GO NRW', req: f.fin === 'ja', why:'Antragsteller: finanzrelevant'},
-    {k:'rpa', l:'Programmprüfung durch {R141} vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen)', req: !!f.gonrw || f.fin === 'ja', why:'prüfungspflichtig'},
-    {k:'pr', l:'Zustimmung des Personalrats', rg:'{BGA}, gepflegt von {R112}', req: f.pr_stufe === 'zustimmung', why:'{R112}: Zustimmung erforderlich', auto: f.pr_stufe === 'zustimmung' && f.pr_datum ? f.pr_datum : null},
+    {k:'gpa', l:'Zulassung der GPA NRW (Finanzsoftware)', rg:'§ 94 Abs. 2 GO NRW', req: FIN(f), why:'Antragsteller: finanzrelevant'},
+    {k:'rpa', l:'Programmprüfung durch {R141} vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen)', req: !!f.gonrw || FIN(f), why:'prüfungspflichtig'},
+    {k:'pr', l:'Zustimmung des Personalrats', rg:'{BGA}, gepflegt von {R112}', req: f.pr_stufe === 'zustimmung', why:'{R112}: Zustimmung erforderlich', auto: f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'ja' && f.pr_datum ? f.pr_datum : null},
     {k:'avv', l:'Auftragsverarbeitungsvertrag abgeschlossen', rg:'Art. 28 DSGVO', req: dsb[2] === 'ja', why:'{DSB}: AVV erforderlich'},
     {k:'vvt', l:'Eintrag im Verzeichnis der Verarbeitungstätigkeiten', rg:'Art. 30 DSGVO', req: dsb[3] === 'ja', why:'{DSB}: VVT-Eintrag erforderlich'},
     {k:'dsfa', l:'Datenschutz-Folgenabschätzung abgeschlossen', rg:'Art. 35 DSGVO, § 24 DSG NRW', req: dsb[4] === 'ja', why:'{DSB}: DSFA erforderlich'},
@@ -611,6 +675,7 @@ function validate(v, role){
   }
   if (v.status === 'V3' && role === 'R15') consentMissing(f).forEach(it => errs.push('Zustimmung Dritter fehlt: ' + it.l));
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && !f.kd_entscheidung) errs.push('Entscheidung durch {KD} fehlt');
+  if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && v.kl && v.kl.who.includes('R112')) errs.push('Die fehlende Zustimmung von {PR} kann nicht durch {KD} ersetzt werden. Bitte erneut vorlegen oder zurückziehen');
   return errs;
 }
 
@@ -648,13 +713,13 @@ function stationSummary(v, role){
   return '';
 }
 async function actAsk(id){
-  const to = $('#rf_to').value, frage = $('#rf_text').value.trim();
-  if (!frage){ state.ui.rfErr = 'Bitte eine Frage eingeben.'; renderMain(); return; }
+  const to = $('#rf_to').value, frage = $('#rf_text').value.trim(), hilfe = state.role === 'FE';
+  if (!frage){ state.ui.rfErr = hilfe ? 'Bitte kurz beschreiben, wobei Sie Hilfe brauchen.' : 'Bitte eine Frage eingeben.'; renderMain(); return; }
   const v = latest(id); applyDraft(v, state.role);
-  v.rfs = v.rfs || []; v.rfs.push({id: rid(), from: state.role, to, frage, ts: nowIso(), offen: true});
-  log(v, SHORT[state.role], 'Rückfrage an ' + SHORT[to], frage);
-  mail(v, to, 'Rückfrage von ' + SHORT[state.role], `hat eine Rückfrage an Sie:\n„${frage}“\n`);
-  if (await commit(v)) toast('Rückfrage gesendet');
+  v.rfs = v.rfs || []; v.rfs.push({id: rid(), from: state.role, to, frage, ts: nowIso(), offen: true, hilfe});
+  log(v, SHORT[state.role], (hilfe ? 'Bitte um Hilfe an ' : 'Rückfrage an ') + SHORT[to], frage);
+  mail(v, to, (hilfe ? 'Bitte um Hilfe von ' : 'Rückfrage von ') + SHORT[state.role], hilfe ? `braucht Ihre Unterstützung. Der Antragsteller bittet um Hilfe:\n„${frage}“\n` : `hat eine Rückfrage an Sie:\n„${frage}“\n`);
+  if (await commit(v)) toast(hilfe ? 'Bitte um Hilfe gesendet' : 'Rückfrage gesendet');
 }
 async function actAnswer(id, rfid){
   const antwort = $('#rf_answer').value.trim();
@@ -866,6 +931,85 @@ async function saveCfgForm(x){
   const errs = checkCfg(x); if (errs.length){ state.ui.cfgErr = errs; state.ui.cfgDraft = x; renderCfg(); return; }
   state.ui.cfgErr = null; state.ui.cfgDraft = null; if (await store.saveCfg(mergeCfg(x))) toast('Einstellungen gespeichert');
 }
+// ===== Glossar: Fachbegriffe in einfacher Sprache =====
+const GLOSSAR = [
+  ['SaaS (Software as a Service)','Die Software läuft nicht bei uns, sondern beim Anbieter im Internet. Sie nutzen sie über den Browser. Die Daten liegen dann beim Anbieter.'],
+  ['On-Premise','Die Software läuft auf eigenen Servern der Verwaltung. Betrieb und Datensicherung übernimmt {R15}.'],
+  ['Schnittstelle','Eine technische Verbindung, über die zwei Programme automatisch Daten austauschen, zum Beispiel ein Fachverfahren mit der E-Akte.'],
+  ['Betriebsart','Wo und von wem die Software betrieben wird: auf eigenen Servern (On-Premise) oder beim Anbieter (SaaS).'],
+  ['Modul','Ein zusätzlicher Baustein für eine Software, die schon im Einsatz ist.'],
+  ['Portal Dritter','Eine Internetanwendung, die eine andere Stelle betreibt (z. B. Land oder Bund) und die Sie nur mitnutzen.'],
+  ['Fachverfahren','Software für eine bestimmte Fachaufgabe, zum Beispiel für Wohngeld oder Kfz-Zulassung.'],
+  ['Fachverfahrensverantwortliche Person','Die Person in Ihrer Einheit, die fachlich für die Software zuständig ist. Sie ist Ansprechperson für {R15}, entscheidet über Zugriffsrechte und begleitet Updates.'],
+  ['Personenbezogene Daten','Alle Angaben, die sich auf einen bestimmten Menschen beziehen: Name, Adresse, Aktenzeichen einer Person, Daten von Beschäftigten.'],
+  ['Besondere Kategorien','Besonders schutzwürdige Daten, zum Beispiel zu Gesundheit, Religion oder Herkunft. Sozialdaten sind ähnlich streng geschützt.'],
+  ['Auftragsverarbeitungsvertrag (AVV)','Vertrag mit einem Dienstleister, der in unserem Auftrag personenbezogene Daten verarbeitet. Er regelt, was der Dienstleister mit den Daten tun darf.'],
+  ['Verzeichnis der Verarbeitungstätigkeiten (VVT)','Liste aller Abläufe, in denen die Verwaltung personenbezogene Daten verarbeitet. Neue Software wird dort eingetragen.'],
+  ['Datenschutz-Folgenabschätzung (DSFA)','Vertiefte Prüfung der Risiken für betroffene Personen. Sie ist nötig, wenn die Verarbeitung besonders riskant ist. {DSB} sagt Ihnen, ob das der Fall ist.'],
+  ['Schutzbedarf','Einschätzung, wie schlimm es wäre, wenn Daten bekannt würden, verfälscht würden oder nicht verfügbar wären. Stufen: normal, hoch, sehr hoch.'],
+  ['Bereichskonzept','Kurze Beschreibung Ihrer Einheit, wie die Software sicher genutzt wird: wer darf was, was passiert bei Ausfall. {ISB} unterstützt dabei.'],
+  ['Rollen- und Rechtekonzept','Festlegung, welche Personengruppe in der Software was sehen und ändern darf.'],
+  ['Protokollierung','Die Software zeichnet auf, wer wann was getan hat. Das ist wichtig für Nachvollziehbarkeit und Kontrolle.'],
+  ['KO-Kriterium','Eine Mindestanforderung. Ist sie nicht erfüllt, kann die Software nicht eingeführt werden.'],
+  ['One-Product-Strategie','Für eine Aufgabe soll es in der Verwaltung nur ein Produkt geben, nicht mehrere nebeneinander.'],
+  ['Softwarekataster','Zentrale Liste aller Software, die in der Verwaltung eingesetzt wird.'],
+  ['Anforderungskatalog','Liste dessen, was die Software können muss. Stichpunkte genügen für den Anfang.'],
+  ['VZÄ (Vollzeitäquivalent)','Maß für Arbeitszeit: 1,0 entspricht einer Vollzeitstelle, 0,5 einer halben.'],
+  ['Barrierefreiheit (BITV)','Die Software muss auch für Menschen mit Behinderung nutzbar sein, zum Beispiel mit Vorleseprogramm oder nur per Tastatur.'],
+  ['Sicherheitsnachweis (BSI C5, ISO 27001)','Bescheinigungen, mit denen ein Anbieter belegt, dass er anerkannte Regeln der IT-Sicherheit einhält.'],
+  ['Programmprüfung','Prüfung durch {R141}, bevor Software eingesetzt wird, die Zahlungen, Buchungen oder Abrechnungen berührt.'],
+  ['GPA-Zulassung','Finanzsoftware braucht zusätzlich eine Zulassung der Gemeindeprüfungsanstalt NRW.'],
+  ['Laufkarte und Laufzettel','Die Laufkarte ist dieser Vorgang, der von Stelle zu Stelle wandert. Der Laufzettel zeigt, wer wann was erledigt hat.']
+];
+function renderGlossar(){
+  const q = ($('#gl_q').value || '').trim().toLowerCase();
+  const hits = GLOSSAR.filter(g => !q || (g[0] + ' ' + T(g[1])).toLowerCase().includes(q));
+  $('#gl_list').innerHTML = hits.map(g => `<div><dt style="font-weight:600">${esc(g[0])}</dt><dd style="margin:2px 0 0;color:var(--muted)">${esc(g[1])}</dd></div>`).join('') || '<p class="sub" style="margin:0">Kein Treffer. Nutzen Sie „Hilfe anfordern“ im Antrag.</p>';
+}
+// ===== Protokoll für die Ablage im DMS =====
+const PROTO_CSS = 'body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:24px;line-height:1.4}.proto h1{font-size:16pt;margin:0 0 4px}.proto h2{font-size:12pt;margin:18px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}.proto table{border-collapse:collapse;width:100%;margin:0 0 6px}.proto th,.proto td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top;font-size:10pt}.proto th{background:#eee;width:34%}.proto .lz th{width:auto}.proto .meta{color:#444;margin:0 0 10px}.proto ul{margin:0;padding-left:18px}.proto .pre{white-space:pre-wrap}';
+function protoVal(fd, x, f){
+  const leer = '–';
+  if (fd.t === 'consent') return '<ul>' + consentItems(f).filter(it => it.req || consentDone(f, it)).map(it => { const c = (x || {})[it.k] || {}; return `<li>${esc(it.l)}: ${consentDone(f, it) ? 'erteilt' + (it.auto ? ' am ' + esc(fmtDateStr(it.auto)) : c.am ? ' am ' + esc(fmtDateStr(c.am)) : '') + (c.dok ? ', Nachweis: ' + esc(c.dok) : '') : 'offen'}${it.req ? ' (Pflicht)' : ''}</li>`; }).join('') + '</ul>';
+  if (fd.t === 'q') return '<ul>' + fd.items.map((it, i) => `<li>${esc(it)}: ${esc((fd.answers.find(a => a[0] === (x || {})[i]) || [,'offen'])[1])}</li>`).join('') + '</ul>';
+  if (fd.t === 'repeat') return Array.isArray(x) && x.some(r => r.p) ? '<ul>' + x.filter(r => r.p).map(r => `<li>${esc(r.p)}${r.e ? ': ' + esc(r.e) : ''}</li>`).join('') + '</ul>' : leer;
+  if (x == null || x === '' || (Array.isArray(x) && !x.length)) return leer;
+  if (fd.t === 'radio') return esc((fd.opts.find(o => o[0] === x) || [,x])[1]);
+  if (fd.t === 'checks') return fd.opts.filter(o => has(x, o[0])).map(o => esc(o[1])).join('; ');
+  if (fd.t === 'check') return x ? 'Ja' : 'Nein';
+  if (fd.t === 'date') return esc(fmtDateStr(x));
+  if (fd.t === 'file') return 'Anlage: ' + esc(x);
+  return `<span class="pre">${esc(x)}</span>`;
+}
+function protoBody(v){
+  const f = v.f, af = auflagenListe(f), rfs = v.rfs || [];
+  let h = `<div class="proto"><h1>Protokoll Softwareeinführung${cfg.titel ? ' · ' + esc(cfg.titel) : ''}</h1>
+    <p class="meta">Vorgang ${esc(v.nr)} · ${esc(f.vorhaben || 'Ohne Titel')}<br>Status: ${esc(ST[v.status])} · angelegt am ${fmtT(v.created)} · Protokoll erzeugt am ${fmtT(nowIso())}</p>`;
+  SECS.filter(sec => sec.when(v)).forEach(sec => {
+    const fds = FIELDS.filter(fd => fd.sec === sec.n && fd.t !== 'info' && visible(fd, v));
+    if (!fds.length) return;
+    h += `<h2>${sec.n} ${esc(sec.title)} (${esc(sec.oe)})</h2><table>${fds.map(fd => `<tr><th>${esc(fd.l)}</th><td>${protoVal(fd, f[fd.id], f)}</td></tr>`).join('')}</table>`;
+  });
+  if (af.length) h += `<h2>Auflagen</h2><ul>${af.map(a => `<li>${esc(a)}</li>`).join('')}</ul>${f.auflagen_ok ? `<p>Vom Antragsteller zur Kenntnis genommen am ${fmt(f.auflagen_ok)}.</p>` : ''}`;
+  if (rfs.length) h += `<h2>Rückfragen und Hilfen</h2><table class="lz"><tr><th>Zeit</th><th>Von</th><th>An</th><th>Anfrage</th><th>Antwort</th></tr>${rfs.map(r => `<tr><td>${fmtT(r.ts)}</td><td>${esc(SHORT[r.from])}</td><td>${esc(SHORT[r.to])}</td><td>${esc(r.frage)}</td><td>${r.offen ? 'offen' : esc(r.antwort) + ' (' + fmtT(r.ts_antwort) + ')'}</td></tr>`).join('')}</table>`;
+  h += `<h2>Laufzettel</h2><table class="lz"><tr><th>Zeit</th><th>Stelle</th><th>Aktion</th><th>Kommentar</th></tr>${v.log.map(e => `<tr><td>${fmtT(e.ts)}</td><td>${esc(e.rolle)}</td><td>${esc(e.aktion)}</td><td>${esc(e.kommentar)}</td></tr>`).join('')}</table>
+    <p class="meta">Automatisch aus der Laufkarte erzeugt. Benachrichtigungen: ${v.mails.length} protokolliert.</p></div>`;
+  return h;
+}
+function protoDoc(v){ return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Protokoll ${esc(v.nr)}</title><style>${PROTO_CSS}</style></head><body>${protoBody(v)}</body></html>`; }
+function protoPrint(v){
+  const pa = $('#printarea'); pa.innerHTML = protoBody(v); pa.hidden = false; document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); pa.hidden = true; pa.innerHTML = ''; window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  try { window.print(); } catch(e){ done(); toast('Drucken ist hier nicht möglich. Bitte „Als Datei herunterladen“ nutzen.'); }
+}
+function protoDownload(v){
+  try {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([protoDoc(v)], {type:'text/html;charset=utf-8'}));
+    a.download = 'Protokoll_' + v.nr + '.html'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Protokoll heruntergeladen');
+  } catch(e){ toast('Herunterladen ist hier nicht möglich. Bitte drucken.'); }
+}
 const FB_STATUS = ['offen','übernommen','zurückgestellt','erledigt'];
 function fbSorted(){ return Object.values(state.fb).sort((a, b) => (b.ts || '').localeCompare(a.ts || '')); }
 function fbMarkdown(list){
@@ -908,10 +1052,14 @@ function renderMain(){
   if (v.f.vza && v.f.vza.trim() !== '0') h += `<div style="margin-top:8px"><span class="chip">Geschätzte Einsparung: ${esc(v.f.vza)} VZÄ/Jahr</span></div>`;
   { const ci = consentItems(v.f).filter(it => it.req); if (ci.length) { const d = ci.filter(it => consentDone(v.f, it)).length; h += `<div style="margin-top:8px"><span class="chip ${d === ci.length ? 'ok' : 'late'}">Zustimmungen Dritter: ${d} von ${ci.length} erteilt</span></div>`; } }
   h += `<div class="route" aria-label="Fortschritt">${stations(v).map(s => `<div class="stop ${s.cls}"><i aria-hidden="true"></i><span>${esc(s.l)}</span><span class="sub">${esc(s.o)}</span></div>`).join('')}</div>`;
-  h += `<div class="tabs" role="tablist">${[['karte','Laufkarte'],['zettel','Laufzettel (' + v.log.length + ')'],['mails','Mails (' + v.mails.length + ')']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${l}</button>`).join('')}</div>`;
+  h += `<div class="tabs" role="tablist">${[['karte','Laufkarte'],['zettel','Laufzettel (' + v.log.length + ')'],['mails','Mails (' + v.mails.length + ')'],['protokoll','Protokoll']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${l}</button>`).join('')}</div>`;
 
   if (state.tab === 'zettel'){
     h += `<div class="tw"><table class="log"><thead><tr><th>Zeit</th><th>Stelle</th><th>Aktion</th><th>Kommentar</th></tr></thead><tbody>${v.log.slice().reverse().map(e => `<tr><td class="num">${fmtT(e.ts)}</td><td>${esc(e.rolle)}</td><td>${esc(e.aktion)}</td><td>${esc(e.kommentar)}</td></tr>`).join('')}</tbody></table></div>`;
+  } else if (state.tab === 'protokoll'){
+    h += `<p class="sub" style="margin-top:12px">Das Protokoll fasst alle Angaben, Stellungnahmen, Zustimmungen und den Laufzettel zusammen. Zur Ablage im DMS als PDF drucken oder als Datei herunterladen. ${FINAL(v.status) ? '' : '<b>Der Vorgang ist noch nicht abgeschlossen; das Protokoll zeigt den Zwischenstand.</b>'}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button type="button" class="primary" data-act="protoprint">Drucken / als PDF speichern</button><button type="button" data-act="protodl">Als Datei herunterladen</button></div>
+      <div class="proto" style="border:1px solid var(--line);border-radius:8px;padding:16px;background:#fff;color:#111">${protoBody(v)}</div>`;
   } else if (state.tab === 'mails'){
     h += `<p class="sub" style="margin-top:12px">${cfg.testmodus ? 'Im Testmodus gehen alle Mails an ' + esc(cfg.testmail) + '. Der Betreff nennt die Stelle, an die die Mail im Echtbetrieb ginge.' : 'Testmodus ist aus: Jede Mail geht an die Adresse der jeweiligen Stelle.'} Im Prototyp werden Mails nur protokolliert, nicht verschickt. Adressen ändern Sie unter „Einstellungen“.</p>`;
     h += v.mails.slice().reverse().map((ml, i) => `<div class="mail"><div class="meta"><span class="num">${fmtT(ml.ts)}</span><span>An: ${esc(ml.an)}</span><span>Echtbetrieb: ${esc(ml.ziel)}</span></div><div class="subj">${esc(ml.betreff)}</div><pre>${esc(ml.text)}</pre><button type="button" class="ghost" data-act="copymailtext" data-k="${v.mails.length - 1 - i}">Text kopieren</button></div>`).join('') || '<p class="sub">Noch keine Mails.</p>';
@@ -919,16 +1067,16 @@ function renderMain(){
     // Hinweise oben
     const rfMe = myOpenRf(v, role);
     if (rfMe){
-      h += `<div class="banner warn"><h4>Rückfrage von ${esc(SHORT[rfMe.from])}</h4><p style="margin:0 0 8px">${esc(rfMe.frage)}</p>
+      h += `<div class="banner warn"><h4>${rfMe.hilfe ? 'Bitte um Hilfe von' : 'Rückfrage von'} ${esc(SHORT[rfMe.from])}</h4><p style="margin:0 0 8px">${esc(rfMe.frage)}</p>
         <label class="lbl" for="rf_answer">Ihre Antwort</label><textarea id="rf_answer">${esc(state.ui.ansDraft || '')}</textarea>
         ${state.ui.ansErr ? `<p class="errs" style="padding:0">${esc(state.ui.ansErr)}</p>` : ''}
-        <p class="sub">Sie können Ihre bisherigen Angaben unten bei Bedarf ergänzen. Mit dem Senden geht die Laufkarte zurück an ${esc(SHORT[rfMe.from])}.</p>
+        <p class="sub">${rfMe.hilfe ? 'Sie sehen unten den bisherigen Stand des Antrags. Antworten Sie hier oder nehmen Sie direkt Kontakt auf (' + esc(v.f.fe_kontakt || 'Ansprechperson noch nicht eingetragen') + ').' : 'Sie können Ihre bisherigen Angaben unten bei Bedarf ergänzen.'} Mit dem Senden geht die Laufkarte zurück an ${esc(SHORT[rfMe.from])}.</p>
         <button type="button" class="primary" data-act="answer" data-k="${esc(rfMe.id)}">Antwort senden</button></div>`;
     }
     const answered = (v.rfs || []).filter(r => !r.offen && r.from === role && isActive(v, role));
-    answered.forEach(r => { h += `<div class="banner info"><h4>Antwort von ${esc(SHORT[r.to])} auf Ihre Rückfrage</h4><p style="margin:0"><span class="sub">Frage:</span> ${esc(r.frage)}<br><span class="sub">Antwort:</span> ${esc(r.antwort)}</p></div>`; });
+    answered.forEach(r => { h += `<div class="banner info"><h4>Antwort von ${esc(SHORT[r.to])} auf Ihre ${r.hilfe ? 'Bitte um Hilfe' : 'Rückfrage'}</h4><p style="margin:0"><span class="sub">Frage:</span> ${esc(r.frage)}<br><span class="sub">Antwort:</span> ${esc(r.antwort)}</p></div>`; });
     const own = rfFromMe(v, role);
-    if (own) h += `<div class="banner info"><h4>Ihre Rückfrage an ${esc(SHORT[own.to])} ist offen</h4><p style="margin:0">${esc(own.frage)}</p></div>`;
+    if (own) h += `<div class="banner info"><h4>Ihre ${own.hilfe ? 'Bitte um Hilfe' : 'Rückfrage'} an ${esc(SHORT[own.to])} ist offen</h4><p style="margin:0">${esc(own.frage)}</p></div>`;
     if (v.status === 'S99'){
       const af = auflagenListe(v.f);
       h += `<div class="banner good"><h4>Software bereitgestellt am ${esc(fmtDateStr(v.f.bereit_am))}</h4><p style="margin:0">Aufgenommen in das Softwarekataster${v.f.kataster_id ? ' unter ' + esc(v.f.kataster_id) : ''}.</p></div>`;
@@ -936,6 +1084,7 @@ function renderMain(){
         h += `<div class="banner warn"><h4>Auflagen für den Antragsteller</h4><ul style="margin:4px 0 8px;padding-left:18px">${af.map(a => `<li>${esc(a)}</li>`).join('')}</ul>${v.f.auflagen_ok ? `<span class="chip ok">Zur Kenntnis genommen am ${fmt(v.f.auflagen_ok)}</span>` : role === 'FE' ? `<button type="button" class="primary" data-act="ack">Auflagen zur Kenntnis genommen</button>` : '<span class="chip">Kenntnisnahme durch den Antragsteller offen</span>'}</div>`;
       }
     }
+    if (v.status === 'N4' && v.kl) h += `<div class="banner warn"><h4>Nicht zugestimmt: ${v.kl.who.map(r => esc(r === 'R112' ? SHORT.PR : SHORT[r])).join(', ')}</h4><p style="margin:0">Die Begründung steht im Abschnitt der jeweiligen Stelle. ${role === 'FE' ? 'Wie es weitergeht, legen Sie in Abschnitt 8 fest.' : 'Der Antragsteller klärt das weitere Vorgehen.'}</p></div>`;
     if (v.status === 'S90') h += `<div class="banner bad"><h4>Vorgang ohne Einführung beendet</h4><p style="margin:0">Den Grund finden Sie im Laufzettel.</p></div>`;
     if (!FINAL(v.status) && !bei.includes(role) && !['PR','R141'].includes(role)) h += `<div class="banner info"><h4>Der Vorgang liegt gerade nicht bei ${esc(SHORT[role])}</h4><p style="margin:0">Sie sehen alle bisherigen Angaben schreibgeschützt. Zum Testen wechseln Sie oben die Rolle zu ${bei.map(r => esc(ROLES[r])).join(' oder ')}.</p></div>`;
     if (v.status === 'V3' && role === 'R15' && consentMissing(v.f).length) h += `<div class="banner bad"><h4>Bereitstellung noch nicht möglich</h4><p style="margin:0">Offene Pflicht-Zustimmungen: ${consentMissing(v.f).map(it => esc(it.l)).join(', ')}. Der Antragsteller pflegt diese in Abschnitt 9; nutzen Sie bei Bedarf „Rückfrage an …“.</p></div>`;
@@ -948,9 +1097,10 @@ function renderMain(){
       h += `<div class="actions">`;
       if (active){
         const lbl = v.status === 'S0' ? 'Antrag absenden' : v.status === 'V3' ? 'Bereitstellung bestätigen' : 'Erledigt, weiterleiten';
-        h += `<button type="button" class="primary" data-act="forward" ${own ? 'disabled title="Erst nach Antwort auf Ihre Rückfrage"' : ''}>${lbl}</button>`;
+        h += `<button type="button" class="primary" data-act="forward" ${own && !own.hilfe ? 'disabled title="Erst nach der Antwort auf Ihre offene Anfrage"' : ''}>${lbl}</button>`;
         h += `<button type="button" data-act="save">Zwischenspeichern</button>`;
-        if (v.status !== 'S0') h += `<button type="button" data-act="askopen" ${own ? 'disabled' : ''}>Rückfrage an …</button>`;
+        if (role === 'FE') h += `<button type="button" data-act="askopen" ${own ? 'disabled title="Ihre Bitte um Hilfe ist noch offen"' : ''}>Hilfe anfordern</button>`;
+        else if (v.status !== 'S0') h += `<button type="button" data-act="askopen" ${own ? 'disabled' : ''}>Rückfrage an …</button>`;
       }
       if (!active && role === 'FE' && v.status !== 'S0') h += `<button type="button" data-act="save">Zustimmungen speichern</button>`;
       h += `<span class="sp"></span>`;
@@ -959,10 +1109,13 @@ function renderMain(){
       h += `</div>`;
       if (state.ui.errs && state.ui.errs.length) h += `<ul class="errs" role="alert">${state.ui.errs.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
       if (state.ui.ask){
+        const hilfe = role === 'FE'; // Antragsteller bitten um Hilfe, alle anderen stellen Rückfragen
         const targets = ACTIVE_ROLES.filter(r => r !== role);
-        h += `<div class="inline"><label class="lbl" for="rf_to">Rückfrage an</label><select id="rf_to">${targets.map(r => `<option value="${r}" ${r === 'FE' ? 'selected' : ''}>${esc(ROLES[r])}</option>`).join('')}</select>
-          <label class="lbl" for="rf_text">Ihre Frage</label><textarea id="rf_text"></textarea>${state.ui.rfErr ? `<p class="errs" style="padding:0">${esc(state.ui.rfErr)}</p>` : ''}
-          <div style="display:flex;gap:8px"><button type="button" class="primary" data-act="ask">Rückfrage senden</button><button type="button" data-act="askclose">Abbrechen</button></div></div>`;
+        const tip = {R013:'Allgemeine Fragen, Ablauf, „ich weiß nicht, wen ich fragen soll“', R151:'Gibt es schon eine passende Software?', R15:'Technik, Betrieb, Schnittstellen', R112:'Organisation, Personalrat', DSB:'Personenbezogene Daten, Datenschutz', ISB:'IT-Sicherheit, Schutzbedarf'};
+        h += `<div class="inline">${hilfe ? `<p style="margin:0"><b>Hilfe anfordern</b><br><span class="sub">Sie kommen an einer Stelle nicht weiter oder verstehen eine Frage nicht? Schreiben Sie kurz, wobei Sie Hilfe brauchen. Ihr Entwurf wird gespeichert, die gewählte Stelle sieht ihn und meldet sich. Viele Begriffe erklärt auch „Begriffe erklärt“ oben.</span></p>` : ''}
+          <label class="lbl" for="rf_to">${hilfe ? 'Wer soll helfen?' : 'Rückfrage an'}</label><select id="rf_to">${targets.map(r => `<option value="${r}" ${r === (hilfe ? 'R013' : 'FE') ? 'selected' : ''}>${esc(ROLES[r])}${hilfe && tip[r] ? ' – ' + esc(tip[r]) : ''}</option>`).join('')}</select>
+          <label class="lbl" for="rf_text">${hilfe ? 'Wobei brauchen Sie Hilfe?' : 'Ihre Frage'}</label><textarea id="rf_text" ${hilfe ? 'placeholder="Z. B.: Ich weiß nicht, ob unsere Software als SaaS gilt."' : ''}></textarea>${state.ui.rfErr ? `<p class="errs" style="padding:0">${esc(state.ui.rfErr)}</p>` : ''}
+          <div style="display:flex;gap:8px"><button type="button" class="primary" data-act="ask">${hilfe ? 'Hilfe anfordern' : 'Rückfrage senden'}</button><button type="button" data-act="askclose">Abbrechen</button></div></div>`;
       }
       if (state.ui.wd){
         h += `<div class="inline"><label class="lbl" for="wd_text">Grund für den Rückzug</label><textarea id="wd_text"></textarea>${state.ui.wdErr ? `<p class="errs" style="padding:0">${esc(state.ui.wdErr)}</p>` : ''}
@@ -1011,6 +1164,8 @@ document.addEventListener('toggle', e => { const s = e.target.closest && e.targe
 document.addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'fbopen'){ openFb('Allgemein'); return; }
+  if (b.id === 'glopen'){ $('#gldrawer').hidden = false; $('#fbdrawer').hidden = true; $('#gl_q').value = ''; renderGlossar(); $('#gl_q').focus(); return; }
+  if (b.id === 'gl_close'){ $('#gldrawer').hidden = true; return; }
   if (b.id === 'cfgopen'){ state.view = 'cfg'; state.ui = {}; renderAll(); return; }
   if (b.dataset.act === 'cfgsave'){ return saveCfgForm(readCfgForm()); }
   if (b.dataset.act === 'cfgreset'){ state.ui.cfgErr = null; state.ui.cfgDraft = mergeCfg(null); renderCfg(); toast('Standardwerte geladen. Zum Übernehmen speichern.'); return; }
@@ -1033,6 +1188,8 @@ document.addEventListener('click', async e => {
     case 'sample': return actSample();
     case 'save': return actSave(id);
     case 'forward': return actForward(id);
+    case 'protoprint': protoPrint(state.items[state.sel]); return;
+    case 'protodl': protoDownload(state.items[state.sel]); return;
     case 'askopen': state.ui.ask = true; renderMain(); return;
     case 'askclose': state.ui.ask = false; renderMain(); return;
     case 'ask': return actAsk(id);
@@ -1054,6 +1211,7 @@ document.addEventListener('click', async e => {
 async function copy(t){ try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch(e){ toast('Kopieren nicht möglich. Bitte Text markieren.'); } }
 const rs = $('#role');
 syncHead();
+$('#gl_q').addEventListener('input', renderGlossar);
 rs.addEventListener('change', () => { state.role = rs.value; lsSet('lk_role', state.role); state.ui = {}; state.filter = 'me'; renderAll(); });
 
 renderAll();

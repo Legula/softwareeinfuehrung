@@ -6,6 +6,12 @@ Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
 **Einstellungen:** Über den Knopf „Einstellungen“ lassen sich die Bezeichnungen aller Organisationseinheiten, ihre Mailadressen, zentrale Begriffe, die Frist je Station und der Testmodus ändern. Die Werte gelten für alle, die die Instanz nutzen. Sie liegen nur im Daten-Volume (`config.json`), nicht im Repository. Über „Einstellungen übertragen“ lassen sie sich als Text kopieren und in einer anderen Instanz einfügen.
 
+**Hilfe für Antragsteller:** „Hilfe anfordern“ schickt eine Frage samt Entwurf an eine wählbare Stelle. „Begriffe erklärt“ öffnet ein Glossar in einfacher Sprache (Konstante `GLOSSAR`).
+
+**Protokoll:** Der Reiter „Protokoll“ fasst Angaben, Stellungnahmen, Zustimmungen und Laufzettel zusammen, zum Drucken als PDF oder als HTML-Datei für die Ablage im DMS.
+
+**Klärung:** Stimmt eine Stelle nicht zu (Digitalisierung, IT, Datenschutz, Informationssicherheit, Personalrat), geht der Vorgang in beiden Pfaden zur Klärung an den Antragsteller (Funktionen `rejectors()` und `transition()`).
+
 **Links:** In den Einstellungen lassen sich bis zu fünf Links hinterlegen (z. B. Konzept, Quellcode), die in der Kopfzeile erscheinen.
 
 **Testmodus:** Im Testmodus gehen alle Mails an eine einzige Adresse (Standard: Platzhalter `testpostfach@example.org`). Im Prototyp werden Mails nur protokolliert und nicht verschickt.
