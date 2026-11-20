@@ -12,6 +12,8 @@ Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
 **Klärung:** Stimmt eine Stelle nicht zu (Digitalisierung, IT, Datenschutz, Informationssicherheit, Personalrat), geht der Vorgang in beiden Pfaden zur Klärung an den Antragsteller (Funktionen `rejectors()` und `transition()`).
 
+**Demodaten:** „Abgeschlossenen Demovorgang erzeugen“ legt einen vollständig durchlaufenen Vorgang an. „Demodaten vorbelegen“ füllt an jeder Station die noch leeren Felder.
+
 **Links:** In den Einstellungen lassen sich bis zu fünf Links hinterlegen (z. B. Konzept, Quellcode), die in der Kopfzeile erscheinen.
 
 **Testmodus:** Im Testmodus gehen alle Mails an eine einzige Adresse (Standard: Platzhalter `testpostfach@example.org`). Im Prototyp werden Mails nur protokolliert und nicht verschickt.

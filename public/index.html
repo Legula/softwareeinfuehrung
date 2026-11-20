@@ -419,7 +419,8 @@ const FIELDS = [
 const $ = s => document.querySelector(s);
 const esc = s => T(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
-const nowIso = () => new Date().toISOString();
+let clockOffset = 0; // nur für den Demovorgang: verschiebt die Uhr, damit der Laufzettel einen realistischen Zeitverlauf zeigt
+const nowIso = () => new Date(Date.now() + clockOffset).toISOString();
 const fmt = iso => iso ? new Date(iso).toLocaleDateString('de-DE') : '';
 const fmtT = iso => iso ? new Date(iso).toLocaleString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
 const fmtDateStr = d => d ? d.split('-').reverse().join('.') : '';
@@ -758,6 +759,110 @@ async function actNew(){
   const v = newVorgang(); log(v, 'FE', 'Antrag angelegt');
   if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'all'; renderAll(); }
 }
+// Demodaten für den Knopf „Demodaten vorbelegen“: füllt nur leere Felder der eigenen Station (positiver Verlauf)
+function demoWerte(){
+  const q = (n, a, abw) => Object.assign(Object.fromEntries(Array.from({length: n}, (_, i) => [i, a])), abw || {}), heute = new Date().toISOString().slice(0, 10);
+  return {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo)', bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
+    anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, besser vorbereitete Termine.', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung',
+    verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall telefonische Terminvergabe.',
+    betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
+    chk_151:['kataster','lizenz','strategie'], strategie:'ja', verfahren:'neu', sw_vorhanden:'Vorhandene Demo-Software', pbd_klar:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Mit dem Antragsteller geklärt (Demo).',
+    fb_013:q(5, 'ja'), stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
+    fb_15:q(5, 'ja'), stn_15:'Technisch umsetzbar (Demo).', votum_15:'ja',
+    bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)',
+    chk_dsb:q(5, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
+    org_auswirk:'nein', pr_stufe:'anzeige', pr_datum: heute, pr_ergebnis:'ja', klaerung:'erneut', klaerung_doku:'Offene Punkte mit der Stelle geklärt (Demo).',
+    bereitstellung:'15', bereit_am: heute, kataster:true};
+}
+function actFill(id){
+  const v = state.items[id], role = state.role, werte = demoWerte(); if (!v) return;
+  let n = 0;
+  for (let runde = 0; runde < 4; runde++){ // mehrere Runden, weil Felder erst durch andere Angaben sichtbar werden
+    const f = curF(v);
+    FIELDS.filter(fd => fd.own === role && fd.st && fd.st.includes(v.status) && fd.id in werte && visible(fd, v) && canEdit(fd, v)).forEach(fd => {
+      const x = f[fd.id], w = werte[fd.id];
+      if (fd.t === 'q'){ const neu = Object.assign({}, w, x || {}); if (JSON.stringify(neu) !== JSON.stringify(x || {})){ setDraft(id, fd.id, neu); n++; } }
+      else if (isEmpty(fd, x, f) && optOn(fd, w, f)){ setDraft(id, fd.id, w); n++; }
+    });
+  }
+  // Pflicht-Zustimmungen Dritter, soweit diese Rolle sie pflegen darf
+  const zf = FIELDS.find(fd => fd.id === 'zust');
+  if (canEdit(zf, v)){ const f = curF(v), z = Object.assign({}, f.zust || {}); let neu = false; consentMissing(f).forEach(it => { z[it.k] = {ok:true, am: new Date().toISOString().slice(0, 10)}; neu = true; n++; }); if (neu) setDraft(id, 'zust', z); }
+  state.ui.errs = null; renderMain();
+  toast(n ? 'Demodaten vorbelegt. Bitte prüfen und weiterleiten.' : 'Hier ist nichts mehr vorzubelegen.');
+}
+// Vollständig durchlaufener Demovorgang: Neueinführung mit Auswahlprozess, einer Bitte um Hilfe, einer Rückfrage,
+// einer Klärung nach fehlender Zustimmung, Auflagen und Zustimmungen Dritter. Nutzt die echten Übergänge.
+async function actDemo(){
+  const TAG = 86400000, q = (n, a, abw) => Object.assign(Object.fromEntries(Array.from({length: n}, (_, i) => [i, a])), abw || {});
+  let tage = 42; const weiter = d => { tage -= d; clockOffset = -tage * TAG; };
+  const iso = () => nowIso().slice(0, 10);
+  weiter(0);
+  const v = newVorgang(), f = v.f;
+  // eine Station erledigt ihre Angaben (wie „Erledigt, weiterleiten“)
+  const erledigt = (role, felder) => {
+    Object.assign(f, felder);
+    const lücken = validate(v, role); if (lücken.length) console.warn('Demovorgang unvollständig', role, v.status, lücken); // Selbstprüfung der Demodaten
+    v.done.push(role);
+    log(v, SHORT[role], 'Erledigt' + (v.status === 'S0' ? ' (Antrag abgesendet)' : ''), stationSummary(v, role));
+    if (role === 'R112' && f.pr_stufe && f.pr_stufe !== 'keine') mail(v, 'PR', 'Zustimmung nach {BGA}', 'wird Ihnen zur Zustimmung vorgelegt.');
+    if (v.open.every(r => v.done.includes(r))) transition(v);
+  };
+  const frage = (from, to, text, antwort, hilfe) => {
+    const r = {id: rid(), from, to, frage: text, ts: nowIso(), offen: true, hilfe: !!hilfe}; v.rfs.push(r);
+    log(v, SHORT[from], (hilfe ? 'Bitte um Hilfe an ' : 'Rückfrage an ') + SHORT[to], text); mail(v, to, (hilfe ? 'Bitte um Hilfe von ' : 'Rückfrage von ') + SHORT[from], `hat eine Anfrage an Sie:\n„${text}“\n`);
+    weiter(1); r.offen = false; r.antwort = antwort; r.ts_antwort = nowIso();
+    log(v, SHORT[to], 'Antwort an ' + SHORT[from], antwort); mail(v, from, 'Antwort auf Ihre Anfrage', `hat eine Antwort:\n„${antwort}“\n`);
+  };
+  try {
+    // 1 Antrag, mit Bitte um Hilfe
+    Object.assign(f, {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo, abgeschlossen)',
+      bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
+      anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, besser vorbereitete Termine. Künftig bucht die Bürgerin selbst, die Sachbearbeitung sieht den Kalender.',
+      vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung', anf_katalog:'Anforderungskatalog_Terminvergabe.pdf',
+      verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen; zusätzlich Bürgerinnen und Bürger', termin: new Date(Date.now() + 60 * TAG).toISOString().slice(0, 10)});
+    log(v, 'FE', 'Antrag angelegt');
+    frage('FE', 'R013', 'Ich bin unsicher, ob unsere Lösung als SaaS gilt. Sie soll beim Anbieter laufen.', 'Ja, das ist SaaS. Bitte zusätzlich „Schnittstelle“ ankreuzen, weil Termine in den Kalender übergeben werden.', true);
+    weiter(1);
+    erledigt('FE', {art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja',
+      ds_vor:{0:'nein',1:'nein',2:'nein',3:'nein',4:'nein',5:'unklar'}, fin:'unklar', ko:q(5, 'ja', {1:'unklar'})});
+    // 3 Prüfung vorhandene Lösung: klärt „Unklar“
+    weiter(3);
+    erledigt('R151', {chk_151:['kataster','lizenz','strategie'], strategie:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Kein vergleichbares Produkt im Kataster. Mit dem Antragsteller geklärt: keine Zahlungsfunktion.', verfahren:'neu', hinweis_151:'Keine vorhandene Lösung. Weiter als Neueinführung.'});
+    // 4 Fortschreibung
+    weiter(4);
+    erledigt('R013', {fb_013:q(5, 'ja', {2:'nein'}), stn_013:'Der Ablauf ist gut beschrieben, der Nutzen messbar. Mehrere Produkte am Markt, daher Auswahlprozess.', votum_013:'ja', ergebnis:'B'});
+    weiter(1);
+    erledigt('R15', {fb_15:q(5, 'ja'), stn_15:'Anmeldung muss über die zentrale Benutzerverwaltung laufen.\nKalenderschnittstelle nur über den freigegebenen Standard.', votum_15:'auflagen'});
+    // 5 Auswahlprozess
+    weiter(8);
+    erledigt('FE', {bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen, Hosting in Deutschland'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'},{p:'Produkt C', e:'Hosting außerhalb der EU, ausgeschieden'}], produkt_b:'Produkt A', doku_b:'Auswahlvermerk.pdf'});
+    // 6 Stellungnahmen, mit Rückfrage und erster Ablehnung
+    weiter(2);
+    frage('DSB', 'FE', 'Werden bei der Buchung Angaben zum Anliegen erfasst, die Sozialdaten sein können?', 'Nur eine Auswahl aus festen Anliegen ohne Freitext. Keine Sozialdaten.');
+    erledigt('DSB', {chk_dsb:q(5, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Kein Freitextfeld zum Anliegen.\nLöschung der Termindaten nach 90 Tagen.', anlage_dsb:'Stellungnahme_Datenschutz.pdf'});
+    weiter(1);
+    erledigt('R15', {it_ok:'ja'});
+    weiter(1);
+    erledigt('ISB', {chk_isb:q(4, 'ja', {2:'nein'}), votum_isb:'nein', empf_isb:'Der Anbieter hat keinen Sicherheitsnachweis vorgelegt. Bitte nachfordern.'});
+    // 8 Klärung
+    weiter(4);
+    erledigt('FE', {klaerung:'erneut', klaerung_doku:'Der Anbieter hat ein ISO-27001-Zertifikat nachgereicht. Mit der Informationssicherheit besprochen.'});
+    weiter(2);
+    erledigt('ISB', {chk_isb:q(4, 'ja'), votum_isb:'auflagen', auflagen_isb:'Bereichskonzept vor Produktivstart vorlegen.', empf_isb:'', anlage_isb:'Stellungnahme_Informationssicherheit.pdf'});
+    // 7 Organisation und Personalrat
+    weiter(3);
+    erledigt('R112', {org_auswirk:'ja', stn_112:'Telefonische Terminvergabe wird reduziert, Aufgaben verschieben sich in die Sachbearbeitung.', pr_stufe:'zustimmung', pr_datum: iso(), pr_ergebnis:'ja'});
+    // 9 Zustimmungen Dritter, 10 Bereitstellung
+    weiter(2);
+    f.zust = {avv:{ok:true, am: iso(), dok:'AVV_Produkt_A.pdf'}, vvt:{ok:true, am: iso()}, bk:{ok:true, am: iso(), dok:'Bereichskonzept.pdf'}};
+    log(v, SHORT.FE, 'Zustimmungen Dritter gepflegt', 'AVV, Verzeichniseintrag, Bereichskonzept');
+    weiter(2);
+    erledigt('R15', {bereitstellung:'saas', bereit_am: iso(), kataster:true, kataster_id:'DEMO-0001'});
+    weiter(1); f.auflagen_ok = nowIso(); log(v, SHORT.FE, 'Auflagen zur Kenntnis genommen');
+  } finally { clockOffset = 0; }
+  if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'done'; renderAll(); toast('Abgeschlossener Demovorgang angelegt. Siehe auch Laufzettel und Protokoll.'); }
+}
 async function actSample(){
   // Beispielvorgang, bereits abgesendet: liegt bei der Bestandsprüfung
   const v = newVorgang();
@@ -791,7 +896,7 @@ function renderList(){
     return `<button type="button" class="item" data-open="${esc(v.id)}" aria-current="${v.id === state.sel}"><span class="nr">${esc(v.nr)}</span><span class="t">${esc(v.f.vorhaben || 'Neuer Antrag')}</span><span class="sub">${esc(ST[v.status])}</span><div class="chips" style="margin-top:4px">${chips}</div></button>`;
   }).join('');
   $('#newbtns').innerHTML = (state.role === 'FE' && !state.readonly ? `<button type="button" class="primary" data-act="new">Neuen Antrag anlegen</button>` : '') +
-    `<button type="button" data-act="sample">Beispielvorgang erzeugen</button>`;
+    `<button type="button" data-act="sample">Beispielvorgang erzeugen</button><button type="button" data-act="demo" title="Legt einen vollständig durchlaufenen Vorgang mit allen Stationen an">Abgeschlossenen Demovorgang erzeugen</button>`;
 }
 function stations(v){
   const f = v.f, r = v.reached, s = [{k:'S0', l:'Antrag', o:'Antragsteller'}, {k:'S1', l:'Prüfung', o:'{R151}'}];
@@ -1114,6 +1219,7 @@ function renderMain(){
         const lbl = v.status === 'S0' ? 'Antrag absenden' : v.status === 'V3' ? 'Bereitstellung bestätigen' : 'Erledigt, weiterleiten';
         h += `<button type="button" class="primary" data-act="forward" ${own && !own.hilfe ? 'disabled title="Erst nach der Antwort auf Ihre offene Anfrage"' : ''}>${lbl}</button>`;
         h += `<button type="button" data-act="save">Zwischenspeichern</button>`;
+        h += `<button type="button" data-act="fill" title="Füllt die noch leeren Felder dieser Station mit Demodaten">Demodaten vorbelegen</button>`;
         if (role === 'FE') h += `<button type="button" data-act="askopen" ${own ? 'disabled title="Ihre Bitte um Hilfe ist noch offen"' : ''}>Hilfe anfordern</button>`;
         else if (v.status !== 'S0') h += `<button type="button" data-act="askopen" ${own ? 'disabled' : ''}>Rückfrage an …</button>`;
       }
@@ -1201,6 +1307,8 @@ document.addEventListener('click', async e => {
   switch (a){
     case 'new': return actNew();
     case 'sample': return actSample();
+    case 'demo': return actDemo();
+    case 'fill': return actFill(state.sel);
     case 'save': return actSave(id);
     case 'forward': return actForward(id);
     case 'protoprint': protoPrint(state.items[state.sel]); return;
