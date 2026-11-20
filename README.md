@@ -14,6 +14,10 @@ Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
 **Demodaten:** „Abgeschlossenen Demovorgang erzeugen“ legt einen vollständig durchlaufenen Vorgang an. „Demodaten vorbelegen“ füllt an jeder Station die noch leeren Felder.
 
+**Ablauf auf einer Seite:** Der Knopf „Ablauf“ zeigt den gesamten Weg als druckbare Grafik. Sie entsteht aus dem Statusmodell (`ST`, `OPEN`) und den Bezeichnungen aus den Einstellungen; die Anordnung steht in `FLOW_NODES`.
+
+**KI-Funktionen:** Eine Frage im Antrag. Nur bei „Ja“ folgen ein Zusatzfeld und je ein Prüfpunkt bei Digitalisierung (Einordnung nach KI-Verordnung) und Datenschutz.
+
 **Offene Fragen:** Geschützter Bereich für die Fragen, die im Gremium zu klären sind: abhaken, Ergebnis festhalten, Fragen ergänzen. Er hat ein eigenes Passwort (Umgebungsvariable `GREMIUM_PASS`); ohne gesetztes Passwort ist der Bereich abgeschaltet. Die Inhalte liegen nur im Daten-Volume (`fragen.json`).
 
 **Links:** In den Einstellungen lassen sich bis zu fünf Links hinterlegen (z. B. Konzept, Quellcode), die in der Kopfzeile erscheinen.

@@ -133,7 +133,9 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
 .proto h1{font-size:1.25rem;margin:0 0 4px}.proto h2{font-size:1rem;margin:18px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}
 .proto table{border-collapse:collapse;width:100%;margin:0 0 6px}.proto th,.proto td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top;font-size:.85rem}
 .proto th{background:#eee;color:#111;width:34%}.proto .lz th{width:auto}.proto .meta{color:#444;margin:0 0 10px;font-size:.85rem}.proto ul{margin:0;padding-left:18px}.proto .pre{white-space:pre-wrap}
-#printarea{background:#fff;color:#111;padding:0}
+#printarea{background:#fff;color:#111;padding:0;--surface:#fff;--surface-2:#f1f3f4;--line:#8a979b;--fg:#111;--muted:#444;--accent:#0d6b73;--accent-soft:#dcefef;--good:#2f7d3b;--good-soft:#e2f2e3;--warn:#9a6400;--warn-soft:#fbf0d8;--bad:#b3261e;--bad-soft:#fbe4e1}
+.flowwrap{overflow-x:auto;margin-top:12px}.flow{display:block;width:100%;min-width:620px;max-width:860px;height:auto;margin:0 auto;font-family:var(--font-body)}
+#printarea .flow{min-width:0;max-height:225mm;font-family:Arial,Helvetica,sans-serif}
 @media print{body.printing>*:not(#printarea){display:none!important}body.printing{background:#fff}}
 #links a{color:var(--accent)}
 .drawer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;z-index:15;padding:16px;display:grid;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
@@ -161,6 +163,7 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
       <select id="role"></select>
       <button type="button" class="primary" id="fbopen">Feedback geben</button>
       <button type="button" id="fblist">Feedback-Liste (<span id="fbcount">0</span>)</button>
+      <button type="button" id="flowopen">Ablauf</button>
       <button type="button" id="gropen" hidden>Offene Fragen 🔒</button>
       <button type="button" id="glopen">Begriffe erklärt</button>
       <button type="button" id="cfgopen">Einstellungen</button>
@@ -253,6 +256,7 @@ const KO_VALS = f => Object.entries(f.ko || {}).filter(([i]) => !(i === '2' && f
 const KO_UNKLAR = f => KO_VALS(f).includes('unklar');
 const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
 const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
+const KI = f => (f.ki === 'unklar' ? f.ki_klar : f.ki) === 'ja'; // KI-Funktionen: Einordnung nach KI-Verordnung und Datenschutzprüfung
 const ONLINE = f => f.online === 'ja' || f.online === 'unklar'; // Onlinedienst für Bürger oder Unternehmen: EfA-Prüfung nötig
 const PR_ABGELEHNT = f => f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'nein';
 const FINAL = s => s === 'S90' || s === 'S99';
@@ -324,6 +328,10 @@ const FIELDS = [
    h:'Name des Portals und wer es betreibt, z. B. ein Landesportal.'},
   {id:'online', sec:2, own:'FE', st:['S0'], t:'radio', l:'Richtet sich die Lösung an Bürgerinnen, Bürger oder Unternehmen (Onlinedienst)?', req:1, opts:JNU,
    h:'Ja, wenn Menschen außerhalb der Verwaltung die Lösung selbst nutzen, z. B. einen Antrag online stellen oder einen Termin buchen. Dann prüft {R013}, ob es dafür schon einen nachnutzbaren Dienst gibt (EfA).'},
+  {id:'ki', sec:2, own:'FE', st:['S0'], t:'radio', l:'Enthält die Software KI-Funktionen?', req:1, opts:JNU,
+   h:'Ja, wenn die Software selbst Texte, Bilder oder Sprache erzeugt, zusammenfasst, übersetzt, Vorschläge macht oder Entscheidungen vorbereitet, z. B. ein Chatbot oder ein Assistent. Auch dann, wenn die Funktion nur zuschaltbar ist.'},
+  {id:'ki_zweck', sec:2, own:'FE', st:['S0'], t:'text', l:'Wofür wird die KI-Funktion genutzt?', req:1, show:f=>f.ki==='ja',
+   h:'Ein Satz genügt, z. B. „Zusammenfassen eingehender Schreiben“.'},
   {id:'pbd', sec:2, own:'FE', st:['S0'], t:'radio', l:'Werden personenbezogene Daten verarbeitet?', req:1, opts:JNU,
    h:'Ja, sobald Namen, Adressen, personenbezogene Aktenzeichen oder Daten von Beschäftigten verarbeitet werden.'},
   {id:'ds_vor', sec:2, own:'FE', st:['S0'], t:'q', l:'Datenschutz-Vorprüfung', req:1, show:f=>f.pbd&&f.pbd!=='nein', answers:[['ja','Ja'],['nein','Nein'],['unklar','Weiß nicht']],
@@ -341,18 +349,20 @@ const FIELDS = [
   {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f),
    opts:[['vorhanden','Vorhandene Software ist unmittelbar nutzbar (Lizenzen vorhanden)'],['neu','Neueinführung erforderlich']]},
   {id:'sw_vorhanden', sec:3, own:'R151', st:['S1'], t:'text', l:'Vorhandene Software', req:1, show:f=>f.verfahren==='vorhanden'&&f.strategie==='ja'&&!KO_ABGELEHNT(f)},
-  {id:'unklar_info', sec:3, t:'info', kind:'warn', l:'Der Antragsteller hat Angaben mit „Unklar“ beantwortet. Bitte klären Sie diese jetzt verbindlich, bei Bedarf per Rückfrage an {DSB}, {R141} oder den Antragsteller.', show:f=>f.pbd==='unklar'||f.fin==='unklar'||KO_UNKLAR(f)},
+  {id:'unklar_info', sec:3, t:'info', kind:'warn', l:'Der Antragsteller hat Angaben mit „Unklar“ beantwortet. Bitte klären Sie diese jetzt verbindlich, bei Bedarf per Rückfrage an {DSB}, {R141} oder den Antragsteller.', show:f=>f.pbd==='unklar'||f.fin==='unklar'||f.ki==='unklar'||KO_UNKLAR(f)},
   {id:'pbd_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: Werden personenbezogene Daten verarbeitet?', req:1, opts:[['ja','Ja'],['nein','Nein']], show:f=>f.pbd==='unklar',
    h:'Im Zweifel „Ja“. Dann prüft {DSB} wie gewohnt.'},
   {id:'fin_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:[['ja','Ja'],['nein','Nein']], show:f=>f.fin==='unklar',
    h:'Bei „Ja“ werden Programmprüfung durch {R141} und GPA-Zulassung zu Pflichtpunkten in Abschnitt 9.'},
+  {id:'ki_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: Enthält die Software KI-Funktionen?', req:1, opts:[['ja','Ja'],['nein','Nein']], show:f=>f.ki==='unklar',
+   h:'Im Zweifel „Ja“. Dann ordnet {R013} die Funktion ein, und {DSB} prüft die Datenverarbeitung.'},
   {id:'ko_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: unklare KO-Kriterien', req:1, col:1, opts:[['ja','Alle unklaren Kriterien sind erfüllt'],['nein','Mindestens ein Kriterium ist nicht erfüllt (Ablehnung)']], show:f=>KO_UNKLAR(f)},
   {id:'ko_klar_doku', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Ergebnis der Klärung', req:1, show:f=>KO_UNKLAR(f),
    h:'Kurz festhalten, wie die unklaren Punkte geklärt wurden und mit wem.'},
   {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
   // Abschnitt 4: {R013}
-  {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU,
-   items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Nutzen ist messbar beschrieben']},
+  {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU, itemShow:{4:f=>KI(f)},
+   items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Nutzen ist messbar beschrieben','KI-Funktion ist nach der KI-Verordnung eingeordnet (Risikoklasse, Transparenzpflichten)']},
   {id:'stn_013', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Stellungnahme {R013}', req:1},
   {id:'votum_013', sec:4, own:'R013', st:['N1'], t:'radio', l:'Votum {R013}', req:1, opts:VOTUM_B, h:'„Nicht befürwortet“ führt zur Klärung beim Antragsteller. Die Gründe gehören in die Stellungnahme.'},
   {id:'efa', sec:4, own:'R013', st:['N1'], t:'radio', l:'EfA-Prüfung: Gibt es einen nachnutzbaren Onlinedienst (EfA-Dienst oder Landeslösung)?', req:1, col:1, show:f=>ONLINE(f),
@@ -385,8 +395,8 @@ const FIELDS = [
   {id:'doku_b', sec:5, own:'FE', st:['B1'], t:'file', l:'Weitere Dokumentation (optional)'},
   // Abschnitt 6: {DSB}
   {id:'dsb_keine', sec:6, t:'info', l:'Nach den bisherigen Angaben werden keine personenbezogenen Daten verarbeitet. Die Prüfpunkte entfallen; bitte bestätigen Sie das kurz mit Ihrem Votum.', show:f=>PBD_NEIN(f)},
-  {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU, show:f=>!PBD_NEIN(f),
-   items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 DSG NRW)','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich']},
+  {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU, show:f=>!PBD_NEIN(f), itemShow:{5:f=>KI(f)},
+   items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 DSG NRW)','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich','KI-Funktion: Verarbeitung personenbezogener Daten ist geprüft (z. B. kein Training mit unseren Daten)']},
   {id:'votum_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'radio', l:'Votum {DSB}', req:1, opts:VOTUM},
   {id:'auflagen_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Auflagen {DSB}', req:1, show:f=>f.votum_dsb==='auflagen', h:'Eine Auflage je Zeile.'},
   {id:'empf_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung {DSB}', req:1, show:f=>f.votum_dsb==='nein'},
@@ -406,6 +416,7 @@ const FIELDS = [
   {id:'org_auswirk', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
   {id:'stn_112', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
   {id:'pr_kontrolle', sec:7, t:'info', kind:'warn', l:'Der Antragsteller gibt an, dass eine Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich ist. „Keine Beteiligung“ steht deshalb nicht zur Auswahl.', show:f=>f.pbd!=='nein'&&!!f.ds_vor&&f.ds_vor[4]==='ja'},
+  {id:'pr_ki', sec:7, t:'info', l:'Die Software enthält KI-Funktionen. Bitte berücksichtigen Sie das bei der Art der Beteiligung {PR}.', show:f=>KI(f)},
   {id:'pr_stufe', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
    opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach {BGA} erforderlich']],
    h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit {PR} abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
@@ -443,6 +454,7 @@ function addWorkdays(iso, n){ // Arbeitstage ohne Wochenenden (Feiertage im Prot
   return d.toISOString();
 }
 const daysSince = iso => Math.floor((Date.now() - new Date(iso)) / 864e5);
+const seitText = iso => { const n = daysSince(iso); return n <= 0 ? 'seit heute' : n === 1 ? 'seit 1 Tag' : 'seit ' + n + ' Tagen'; }; // reine Anzeige der Liegezeit, keine Wiedervorlage
 const rid = () => Math.random().toString(36).slice(2, 10);
 function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
 function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
@@ -778,12 +790,12 @@ function demoWerte(){
   return {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo)', bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
     anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, besser vorbereitete Termine.', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung',
     verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall telefonische Terminvergabe.',
-    betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', online:'nein', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
+    betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', online:'nein', ki:'nein', ki_zweck:'Assistent beantwortet Fragen zur Terminbuchung (Demo)', ki_klar:'nein', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
     chk_151:['kataster','lizenz','strategie'], strategie:'ja', verfahren:'neu', sw_vorhanden:'Vorhandene Demo-Software', pbd_klar:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Mit dem Antragsteller geklärt (Demo).',
-    fb_013:q(4, 'ja'), efa:'keiner', efa_vermerk:'EfA-Marktplatz geprüft (Demo)', efa_abweichung:'Dienst deckt den Bedarf nicht (Demo).', stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
+    fb_013:q(5, 'ja'), efa:'keiner', efa_vermerk:'EfA-Marktplatz geprüft (Demo)', efa_abweichung:'Dienst deckt den Bedarf nicht (Demo).', stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
     fb_15:q(5, 'ja'), stn_15:'Technisch umsetzbar (Demo).', votum_15:'ja',
     bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)',
-    chk_dsb:q(5, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
+    chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
     org_auswirk:'nein', pr_stufe:'anzeige', pr_datum: heute, pr_ergebnis:'ja', klaerung:'erneut', klaerung_doku:'Offene Punkte mit der Stelle geklärt (Demo).',
     bereitstellung:'15', bereit_am: heute, kataster:true};
 }
@@ -837,14 +849,14 @@ async function actDemo(){
     log(v, 'FE', 'Antrag angelegt');
     frage('FE', 'R013', 'Ich bin unsicher, ob unsere Lösung als SaaS gilt. Sie soll beim Anbieter laufen.', 'Ja, das ist SaaS. Bitte zusätzlich „Schnittstelle“ ankreuzen, weil Termine in den Kalender übergeben werden.', true);
     weiter(1);
-    erledigt('FE', {art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', online:'ja', pbd:'ja',
+    erledigt('FE', {art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', online:'ja', ki:'ja', ki_zweck:'Ein Assistent beantwortet Fragen zur Terminbuchung.', pbd:'ja',
       ds_vor:{0:'nein',1:'nein',2:'nein',3:'nein',4:'nein',5:'unklar'}, fin:'unklar', ko:q(5, 'ja', {1:'unklar'})});
     // 3 Prüfung vorhandene Lösung: klärt „Unklar“
     weiter(3);
     erledigt('R151', {chk_151:['kataster','lizenz','strategie'], strategie:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Kein vergleichbares Produkt im Kataster. Mit dem Antragsteller geklärt: keine Zahlungsfunktion.', verfahren:'neu', hinweis_151:'Keine vorhandene Lösung. Weiter als Neueinführung.'});
     // 4 Fortschreibung
     weiter(4);
-    erledigt('R013', {fb_013:q(4, 'ja', {2:'nein'}), efa:'passt_nicht', efa_vermerk:'EfA-Marktplatz geprüft: Terminbuchung eines anderen Landes, keine Kalenderanbindung', stn_013:'Der Ablauf ist gut beschrieben, der Nutzen messbar. Der vorhandene EfA-Dienst passt nicht, mehrere Produkte am Markt, daher Auswahlprozess.', votum_013:'ja', ergebnis:'B'});
+    erledigt('R013', {fb_013:q(5, 'ja', {2:'nein'}), efa:'passt_nicht', efa_vermerk:'EfA-Marktplatz geprüft: Terminbuchung eines anderen Landes, keine Kalenderanbindung', stn_013:'Der Ablauf ist gut beschrieben, der Nutzen messbar. Der vorhandene EfA-Dienst passt nicht, mehrere Produkte am Markt, daher Auswahlprozess.', votum_013:'ja', ergebnis:'B'});
     weiter(1);
     erledigt('R15', {fb_15:q(5, 'ja'), stn_15:'Anmeldung muss über die zentrale Benutzerverwaltung laufen.\nKalenderschnittstelle nur über den freigegebenen Standard.', votum_15:'auflagen'});
     // 5 Auswahlprozess
@@ -853,7 +865,7 @@ async function actDemo(){
     // 6 Stellungnahmen, mit Rückfrage und erster Ablehnung
     weiter(2);
     frage('DSB', 'FE', 'Werden bei der Buchung Angaben zum Anliegen erfasst, die Sozialdaten sein können?', 'Nur eine Auswahl aus festen Anliegen ohne Freitext. Keine Sozialdaten.');
-    erledigt('DSB', {chk_dsb:q(5, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Kein Freitextfeld zum Anliegen.\nLöschung der Termindaten nach 90 Tagen.', anlage_dsb:'Stellungnahme_Datenschutz.pdf'});
+    erledigt('DSB', {chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Kein Freitextfeld zum Anliegen.\nLöschung der Termindaten nach 90 Tagen.\nDer Assistent wird nicht mit unseren Daten trainiert.', anlage_dsb:'Stellungnahme_Datenschutz.pdf'});
     weiter(1);
     erledigt('R15', {it_ok:'ja'});
     weiter(1);
@@ -882,7 +894,7 @@ async function actSample(){
   Object.assign(v.f, {fe_oe:'Fachbereich Soziales (Beispiel)', fe_kontakt:'Beispielperson', verantwortlich:'Beispielperson', nutzer:'Terminvergabe, ca. 12 Personen', fin:'nein', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung', ds_vor:{0:'unklar',1:'nein',2:'nein',3:'nein',4:'ja',5:'unklar'}, vorhaben:'Digitale Terminvergabe (Beispiel)',
     bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
     anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, Termine sind besser vorbereitet. Künftig bucht die Bürgerin selbst, die Sachbearbeitung sieht den Kalender.',
-    produkt_wunsch:'', online:'ja', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja', ko:{0:'ja',1:'unklar',2:'ja',3:'ja',4:'ja'}});
+    produkt_wunsch:'', online:'ja', ki:'nein', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja', ko:{0:'ja',1:'unklar',2:'ja',3:'ja',4:'ja'}});
   log(v, 'FE', 'Antrag angelegt'); v.done.push('FE'); log(v, 'FE', 'Erledigt (Antrag abgesendet)'); transition(v);
   if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'all'; renderAll(); toast('Beispielvorgang angelegt; er liegt bei {R151}'); }
 }
@@ -905,7 +917,7 @@ function renderList(){
   else el.innerHTML = list.map(v => {
     const late = !FINAL(v.status) && new Date(v.frist) < new Date();
     const chips = FINAL(v.status) ? `<span class="chip ${v.status === 'S99' ? 'ok' : 'late'}">${esc(ST[v.status])}</span>`
-      : liegtBei(v).map(r => `<span class="chip ${r === state.role ? 'me' : ''}">${esc(SHORT[r])}</span>`).join('') + `<span class="chip num ${late ? 'late' : ''}">${daysSince(v.since)} T</span>`;
+      : `<span class="sub" style="${late ? 'color:var(--bad);font-weight:600' : ''}">Liegt ${seitText(v.since)} bei</span>` + liegtBei(v).map(r => `<span class="chip ${r === state.role ? 'me' : ''}">${esc(SHORT[r])}</span>`).join('') + (late ? '<span class="chip late">Frist überschritten</span>' : '');
     return `<button type="button" class="item" data-open="${esc(v.id)}" aria-current="${v.id === state.sel}"><span class="nr">${esc(v.nr)}</span><span class="t">${esc(v.f.vorhaben || 'Neuer Antrag')}</span><span class="sub">${esc(ST[v.status])}</span><div class="chips" style="margin-top:4px">${chips}</div></button>`;
   }).join('');
   $('#newbtns').innerHTML = (state.role === 'FE' && !state.readonly ? `<button type="button" class="primary" data-act="new">Neuen Antrag anlegen</button>` : '') +
@@ -1080,8 +1092,11 @@ const GR_START = [
   ['Erste Anlaufstelle für Hilfe','Wer beantwortet „Hilfe anfordern“ der Facheinheiten? Im Prototyp {R013}.'],
   ['Protokoll und Ablage','Wer legt das Protokoll im DMS ab, zu welchem Zeitpunkt und unter welchem Aktenzeichen?'],
   ['Rechtsgrundlage Programmprüfung','§ 104 Abs. 1 Nr. 3 GO NRW statt § 102 wie in der Vorlage. Bitte bestätigen.'],
-  ['Technische Umsetzung','Mit welchem System wird der abgestimmte Ablauf später umgesetzt, und wer prüft die Machbarkeit?']
+  ['Technische Umsetzung','Mit welchem System wird der abgestimmte Ablauf später umgesetzt, und wer prüft die Machbarkeit?'],
+  ['Erneute Auslösung des Ablaufs','Wann lösen ein Versionswechsel, ein neues Modul oder ein Herstellerwechsel den Ablauf erneut aus, und wann genügt eine Anzeige?','erneut'],
+  ['KI-Funktionen','Im Prototyp ordnet {R013} KI-Funktionen nach der KI-Verordnung ein, {DSB} prüft die Datenverarbeitung. Ist das die richtige Zuständigkeit, und welche internen Regeln zur KI-Nutzung gelten?','ki']
 ];
+const grNeu = ([titel, text, key]) => Object.assign({id: rid(), titel: T(titel), text: T(text), ok: false, ergebnis: ''}, key ? {key} : {});
 const gr = {key: null, items: null, err: '', busy: false};
 try { gr.key = sessionStorage.getItem('lk_gr') || null; } catch(e){}
 async function grFetch(method, body){
@@ -1094,8 +1109,13 @@ async function grLoad(){
   gr.busy = true; gr.err = ''; renderGr();
   try {
     const d = await grFetch('GET');
-    if (Array.isArray(d.items)) gr.items = d.items;
-    else { gr.items = GR_START.map(([titel, text]) => ({id: rid(), titel: T(titel), text: T(text), ok: false, ergebnis: ''})); await grFetch('PUT', {items: gr.items}); } // Startliste mit den eingestellten Bezeichnungen anlegen
+    if (Array.isArray(d.items)){
+      gr.items = d.items;
+      // später ergänzte Startfragen einmalig nachtragen; entfernte bleiben über einen Merker entfernt
+      const fehlt = GR_START.filter(q => q[2] && !gr.items.some(x => x.key === q[2]));
+      if (fehlt.length){ fehlt.forEach(q => gr.items.push(grNeu(q))); await grFetch('PUT', {items: gr.items}); }
+    }
+    else { gr.items = GR_START.map(grNeu); await grFetch('PUT', {items: gr.items}); } // Startliste mit den eingestellten Bezeichnungen anlegen
     try { sessionStorage.setItem('lk_gr', gr.key); } catch(e){}
   } catch(e){ gr.err = e.message; }
   gr.busy = false; if (state.view === 'gr') renderGr();
@@ -1111,9 +1131,9 @@ function renderGr(){
     const pw = $('#gr_pw'); if (pw){ pw.focus(); pw.addEventListener('keydown', e => { if (e.key === 'Enter') grAct({dataset:{act:'grlogin'}}); }); }
     return;
   }
-  const offen = gr.items.filter(x => !x.ok).length;
-  let h = kopf(`${gr.items.length} Fragen, davon ${offen} offen. Änderungen werden sofort für alle mit Zugang gespeichert.`);
-  h += gr.items.map((x, i) => `<div class="fbitem ${x.ok ? 'done' : ''}">
+  const liste = gr.items.filter(x => !x.del), offen = liste.filter(x => !x.ok).length;
+  let h = kopf(`${liste.length} Fragen, davon ${offen} offen. Änderungen werden sofort für alle mit Zugang gespeichert.`);
+  h += liste.map((x, i) => `<div class="fbitem ${x.ok ? 'done' : ''}">
       <label class="opts" style="align-items:flex-start"><input type="checkbox" data-gr="ok" data-k="${esc(x.id)}" ${x.ok ? 'checked' : ''}> <span><b>${i + 1}. ${esc(x.titel)}</b>${x.ok ? ' <span class="chip ok">geklärt</span>' : ''}<br><span class="sub">${esc(x.text)}</span></span></label>
       <label class="lbl" for="gr_e_${esc(x.id)}" style="margin-top:8px">Ergebnis / Beschluss</label><textarea id="gr_e_${esc(x.id)}" data-gr="ergebnis" data-k="${esc(x.id)}" style="min-height:54px">${esc(x.ergebnis || '').replace(/\{/g, '&#123;')}</textarea>
       <div style="text-align:right"><button type="button" class="ghost" data-act="grdel" data-k="${esc(x.id)}">Frage entfernen</button></div></div>`).join('');
@@ -1124,8 +1144,8 @@ async function grAct(b){
   const act = b.dataset.act, k = b.dataset.k;
   if (act === 'grlogin'){ const pw = $('#gr_pw').value; if (!pw){ gr.err = 'Bitte das Passwort eingeben.'; return renderGr(); } gr.key = pw; return grLoad(); }
   if (act === 'grlock'){ gr.key = null; gr.items = null; gr.err = ''; try { sessionStorage.removeItem('lk_gr'); } catch(e){} return renderGr(); }
-  if (act === 'grcopy') return copy(gr.items.map((x, i) => `${i + 1}. [${x.ok ? 'x' : ' '}] ${x.titel}\n   ${x.text}${x.ergebnis ? '\n   Ergebnis: ' + x.ergebnis : ''}`).join('\n\n'));
-  if (act === 'grdel'){ if (state.ui.grdel !== k){ state.ui.grdel = k; b.textContent = 'Wirklich entfernen?'; return; } gr.items = gr.items.filter(x => x.id !== k); state.ui.grdel = null; await grSave(); return renderGr(); }
+  if (act === 'grcopy') return copy(gr.items.filter(x => !x.del).map((x, i) => `${i + 1}. [${x.ok ? 'x' : ' '}] ${x.titel}\n   ${x.text}${x.ergebnis ? '\n   Ergebnis: ' + x.ergebnis : ''}`).join('\n\n'));
+  if (act === 'grdel'){ if (state.ui.grdel !== k){ state.ui.grdel = k; b.textContent = 'Wirklich entfernen?'; return; } gr.items = gr.items.flatMap(x => x.id !== k ? [x] : x.key ? [{id: x.id, key: x.key, del: true}] : []); state.ui.grdel = null; await grSave(); return renderGr(); }
   if (act === 'gradd'){ const t = $('#gr_nt').value.trim(), x = $('#gr_nx').value.trim(); if (!t){ toast('Bitte ein Stichwort eingeben.'); return; } gr.items.push({id: rid(), titel: t, text: x, ok: false, ergebnis: ''}); await grSave(); return renderGr(); }
 }
 // Abhaken und Ergebnisfeld speichern sich selbst
@@ -1135,6 +1155,93 @@ document.addEventListener('change', async e => {
   if (el.dataset.gr === 'ok'){ x.ok = el.checked; if (await grSave()) renderGr(); }
   else if (x.ergebnis !== el.value){ x.ergebnis = el.value; if (await grSave()) toast('Gespeichert'); }
 });
+
+// ===== Ablauf auf einer Seite =====
+// Die Grafik entsteht aus dem Statusmodell: Bezeichnungen aus ST, Zuständige aus OPEN, Namen aus den Einstellungen.
+// Hier steht nur die Anordnung (Spalte, Zeile) und je Station ein kurzer Zusatz.
+const FLOW_NODES = [
+  {k:'S0',  col:1, row:0, title:'Antrag', note:'Bedarf, Einordnung, KO-Kriterien'},
+  {k:'S1',  col:1, row:1, note:'legt den weiteren Weg fest und klärt Angaben mit „Unklar“'},
+  {k:'S90', col:2, row:1, kind:'end', note:'bei Ablehnung in der Prüfung oder nach der Klärung'},
+  {k:'N1',  col:0, row:2, note:'Methodik, Marktsicht, EfA-Prüfung, technische Anforderungen'},
+  {k:'V12', col:2, row:2, note:'einschließlich Beteiligung {PR}'},
+  {k:'B1',  col:0, row:3, note:'nur wenn mehrere Produkte in Frage kommen'},
+  {k:'N2',  col:0, row:4, note:'nach einem Auswahlprozess bestätigt {R15} das gewählte Produkt'},
+  {k:'N3',  col:0, row:5, note:'steuert die Beteiligung {PR}'},
+  {k:'V3',  col:1, row:6, note:'erst wenn alle Pflicht-Zustimmungen Dritter vorliegen'},
+  {k:'S99', col:1, row:7, kind:'ok', note:'Aufnahme ins Softwarekataster, Protokoll für das DMS'}
+];
+const FLOW_KL = ['Wenn eine Stelle nicht zustimmt, klärt der Antragsteller das weitere Vorgehen:', '1. Überarbeitet erneut vorlegen: zurück an die Stelle, die nicht zugestimmt hat.', '2. Entscheidung durch {KD}: bei Freigabe geht es weiter. Eine fehlende Zustimmung {PR} wird dadurch nicht ersetzt.', '3. Zurückziehen oder Ablehnung: Ende ohne Einführung.'];
+function flowWrap(text, n){ // Text in Zeilen mit höchstens n Zeichen teilen (SVG bricht nicht selbst um)
+  const out = []; let z = '';
+  T(text).split(/\s+/).forEach(w => { if (z && (z + ' ' + w).length > n){ out.push(z); z = w; } else z = z ? z + ' ' + w : w; });
+  if (z) out.push(z); return out;
+}
+function flowSvg(pid = 'pf'){ // pid: eigene Pfeil-Kennung, damit die Druckfassung nicht auf die ausgeblendete Bildschirmfassung verweist
+  const W = 210, X = [44, 315, 586], GAP = 30, x = s => esc(s);
+  const wer = k => OPEN[k].map(r => SHORT[r]).join(' · ') + (OPEN[k].length > 1 ? ' (parallel)' : '');
+  const nodes = {};
+  FLOW_NODES.forEach(n => {
+    const t = flowWrap(n.title || ST[n.k], 27), w = OPEN[n.k].length ? flowWrap(wer(n.k), 31) : [], z = flowWrap(n.note, 35);
+    nodes[n.k] = Object.assign({}, n, {t, w, z, x: X[n.col], h: Math.max(62, 20 + t.length * 16 + w.length * 15 + z.length * 14)});
+  });
+  // Zeilen von oben nach unten setzen; vor der Verzweigung etwas mehr Platz für die Beschriftung
+  let y = 8; const rowY = [];
+  for (let r = 0; r <= 7; r++){ rowY[r] = y; y += Math.max(...FLOW_NODES.filter(n => n.row === r).map(n => nodes[n.k].h)) + (r === 1 ? 50 : GAP); }
+  Object.values(nodes).forEach(n => { n.y = rowY[n.row]; n.cx = n.x + W / 2; n.b = n.y + n.h; });
+  const N = nodes, kl = {x: X[1], y: rowY[2], b: N.N3.b}, H = N.S99.b + 8;
+  const col = {'':['var(--surface)','var(--line)'], end:['var(--bad-soft)','var(--bad)'], ok:['var(--good-soft)','var(--good)'], kl:['var(--warn-soft)','var(--warn)']};
+  const box = (bx, by, bh, kind) => `<rect x="${bx}" y="${by}" width="${W}" height="${bh}" rx="8" fill="${col[kind || ''][0]}" stroke="${col[kind || ''][1]}" stroke-width="1.5"/>`;
+  const lines = (arr, cx, y0, lh, size, weight, fill) => arr.map((l, i) => `<text x="${cx}" y="${y0 + i * lh}" text-anchor="middle" font-size="${size}" font-weight="${weight}" fill="${fill}">${x(l)}</text>`).join('');
+  const pfeil = (pts, dash) => `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${dash ? 'var(--warn)' : 'var(--muted)'}" stroke-width="1.6" ${dash ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#${pid}${dash ? 'w' : ''})"/>`;
+  let s = `<svg class="flow" viewBox="0 0 840 ${H}" role="img" aria-label="Ablauf der Softwareeinführung als Grafik"><defs>
+    <marker id="${pid}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+    <marker id="${pid}w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/></marker></defs>`;
+  // Verbindungen
+  const yv = N.S1.b + 16, yb = N.V3.y + 30;
+  s += pfeil([[N.S0.cx, N.S0.b], [N.S1.cx, N.S1.y]]);
+  s += pfeil([[N.S1.x + W, N.S1.y + 30], [N.S90.x, N.S90.y + 30]]);
+  s += pfeil([[N.S1.cx, N.S1.b], [N.S1.cx, yv], [N.N1.cx, yv], [N.N1.cx, N.N1.y]]);
+  s += pfeil([[N.S1.cx, yv], [N.V12.cx, yv], [N.V12.cx, N.V12.y]]);
+  s += `<text x="${N.N1.cx + 8}" y="${N.N1.y - 9}" font-size="12" font-weight="600" fill="var(--fg)">Neueinführung</text><text x="${N.V12.cx - 8}" y="${N.V12.y - 9}" text-anchor="end" font-size="12" font-weight="600" fill="var(--fg)">Vorhandene Software nutzbar</text>`;
+  s += pfeil([[N.N1.cx, N.N1.b], [N.B1.cx, N.B1.y]]) + pfeil([[N.B1.cx, N.B1.b], [N.N2.cx, N.N2.y]]) + pfeil([[N.N2.cx, N.N2.b], [N.N3.cx, N.N3.y]]);
+  s += pfeil([[N.N1.x, N.N1.y + 30], [22, N.N1.y + 30], [22, N.N2.y + 30], [N.N2.x, N.N2.y + 30]]);
+  { const my = (N.N1.y + N.N2.y) / 2 + 30; s += `<text transform="translate(15 ${my}) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--muted)">nur ein Produkt oder Nachnutzung</text>`; }
+  s += pfeil([[N.N3.cx, N.N3.b], [N.N3.cx, yb], [N.V3.x, yb]]) + pfeil([[N.V12.cx, N.V12.b], [N.V12.cx, yb], [N.V3.x + W, yb]]);
+  s += pfeil([[N.V3.cx, N.V3.b], [N.S99.cx, N.S99.y]]);
+  ['N1','N2','N3'].forEach(k => { s += pfeil([[N[k].x + W, N[k].y + 30], [kl.x, N[k].y + 30]], true); });
+  s += pfeil([[N.V12.x, N.V12.y + 30], [kl.x + W, N.V12.y + 30]], true);
+  // Stationen
+  Object.values(N).forEach(n => {
+    let ty = n.y + 22; s += box(n.x, n.y, n.h, n.kind);
+    s += lines(n.t, n.cx, ty, 16, 13.5, 700, 'var(--fg)'); ty += n.t.length * 16;
+    s += lines(n.w, n.cx, ty, 15, 12, 600, 'var(--accent)'); ty += n.w.length * 15;
+    s += lines(n.z, n.cx, ty, 14, 11, 400, 'var(--muted)');
+  });
+  // Klärung: ein Kasten neben allen Stationen, die ablehnen können
+  { const cx = kl.x + W / 2; let ty = kl.y + 22; s += box(kl.x, kl.y, kl.b - kl.y, 'kl');
+    s += lines(flowWrap(ST.N4, 27), cx, ty, 16, 13.5, 700, 'var(--fg)'); ty += 16;
+    s += lines([wer('N4')], cx, ty, 15, 12, 600, 'var(--accent)'); ty += 24;
+    FLOW_KL.forEach(a => { const z = flowWrap(a, 33); s += z.map((l, i) => `<text x="${kl.x + 12}" y="${ty + i * 14}" font-size="11" fill="var(--fg)">${x(l)}</text>`).join(''); ty += z.length * 14 + 8; }); }
+  return s + '</svg>';
+}
+function flowBody(pid){
+  return `<div class="flowwrap">${flowSvg(pid)}</div>
+    <p class="sub" style="margin:10px 0 0"><b>Lesehilfe:</b> Durchgezogene Pfeile zeigen den normalen Weg. Gestrichelte Pfeile führen in die Klärung, wenn eine Stelle nicht zustimmt. „(parallel)“ heißt, die Stellen arbeiten gleichzeitig; erst wenn alle fertig sind, geht es weiter.</p>
+    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{KAT}')} nach Abschluss. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt.</p>`;
+}
+function renderFlow(){
+  $('#main').innerHTML = `<div class="head"><div><h2>Ablauf auf einer Seite</h2><div class="sub">Wer ist wann beteiligt? Die Grafik entsteht aus dem hinterlegten Ablauf und den Bezeichnungen aus den Einstellungen.</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start"><button type="button" class="primary" data-act="flowprint">Drucken / als PDF speichern</button><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>${flowBody()}`;
+}
+// Gemeinsames Drucken für Protokoll und Ablaufgrafik
+function printHtml(html){
+  const pa = $('#printarea'); pa.innerHTML = html; pa.hidden = false; document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); pa.hidden = true; pa.innerHTML = ''; window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  try { window.print(); } catch(e){ done(); toast('Drucken ist hier nicht möglich.'); }
+}
+function flowPrint(){ printHtml(`<div class="proto" style="padding:20px"><h1>Ablauf Softwareeinführung${cfg.titel ? ' · ' + esc(cfg.titel) : ''}</h1><p class="meta">Stand ${fmt(nowIso())}</p>${flowBody('pfd')}</div>`); }
 
 // ===== Glossar: Fachbegriffe in einfacher Sprache =====
 const GLOSSAR = [
@@ -1146,6 +1253,8 @@ const GLOSSAR = [
   ['Portal Dritter','Eine Internetanwendung, die eine andere Stelle betreibt (z. B. Land oder Bund) und die Sie nur mitnutzen.'],
   ['Onlinedienst (OZG)','Eine Verwaltungsleistung, die Bürgerinnen, Bürger oder Unternehmen selbst über das Internet nutzen. Das Onlinezugangsgesetz (OZG) verpflichtet die Verwaltung, solche Dienste anzubieten.'],
   ['EfA (Einer für Alle)','Ein Land oder eine Kommune entwickelt einen Onlinedienst, alle anderen können ihn nachnutzen. EfA-First heißt: Erst prüfen, ob es so einen Dienst schon gibt, bevor man selbst etwas beschafft.'],
+  ['KI-Funktion','Die Software erzeugt selbst Inhalte oder Vorschläge, zum Beispiel Texte, Zusammenfassungen, Übersetzungen oder Antworten in einem Chat. Auch zuschaltbare Assistenten zählen dazu.'],
+  ['KI-Verordnung (AI Act)','EU-Regeln für den Einsatz von KI. Je nach Risiko gelten Pflichten, zum Beispiel Hinweise an die Nutzenden oder Schulung der Beschäftigten. {R013} ordnet die Funktion ein.'],
   ['Fachverfahren','Software für eine bestimmte Fachaufgabe, zum Beispiel für Wohngeld oder Kfz-Zulassung.'],
   ['Fachverfahrensverantwortliche Person','Die Person in Ihrer Einheit, die fachlich für die Software zuständig ist. Sie ist Ansprechperson für {R15}, entscheidet über Zugriffsrechte und begleitet Updates.'],
   ['Personenbezogene Daten','Alle Angaben, die sich auf einen bestimmten Menschen beziehen: Name, Adresse, Aktenzeichen einer Person, Daten von Beschäftigten.'],
@@ -1252,6 +1361,7 @@ function renderMain(){
   if (state.view === 'fb') return renderFbList();
   if (state.view === 'cfg') return renderCfg();
   if (state.view === 'gr') return renderGr();
+  if (state.view === 'flow') return renderFlow();
   const m = $('#main'), v = state.items[state.sel];
   if (!v){
     m.innerHTML = `<div class="empty"><h3>Kein Vorgang gewählt</h3><p>Wählen Sie links einen Vorgang. Oben stellen Sie ein, aus Sicht welcher Stelle Sie testen.</p><p class="sub">Ablauf im Test: Antrag als Antragsteller anlegen und absenden, dann Rolle wechseln ({R151}, {R013}, {R15}, {DSB}, {ISB}, {R112}) und jeweils weiterleiten. Jede Mail landet im Reiter „Mails“.</p></div>`;
@@ -1260,7 +1370,7 @@ function renderMain(){
   const scroll = window.scrollY;
   const role = state.role, bei = liegtBei(v), late = !FINAL(v.status) && new Date(v.frist) < new Date();
   let h = `<div class="head"><div><span class="nr">${esc(v.nr)}</span><h2>${esc(v.f.vorhaben || 'Neuer Antrag')}</h2><div class="sub">${esc(v.f.fe_oe || 'Antragsteller')} · angelegt ${fmt(v.created)}</div></div>
-    <div class="where">${FINAL(v.status) ? `<b>${esc(ST[v.status])}</b>` : `Liegt bei: <b>${bei.map(r => esc(SHORT[r])).join(', ')}</b><br><span class="sub">seit ${fmt(v.since)} · Frist <span class="num" style="${late ? 'color:var(--bad);font-weight:600' : ''}">${fmt(v.frist)}</span></span>`}</div></div>`;
+    <div class="where">${FINAL(v.status) ? `<b>${esc(ST[v.status])}</b>` : `Liegt bei: <b>${bei.map(r => esc(SHORT[r])).join(', ')}</b><br><span class="sub">${seitText(v.since)} (${fmt(v.since)}) · Frist <span class="num" style="${late ? 'color:var(--bad);font-weight:600' : ''}">${fmt(v.frist)}</span></span>`}</div></div>`;
   if (v.f.vza && v.f.vza.trim() !== '0') h += `<div style="margin-top:8px"><span class="chip">Geschätzte Einsparung: ${esc(v.f.vza)} VZÄ/Jahr</span></div>`;
   { const ci = consentItems(v.f).filter(it => it.req); if (ci.length) { const d = ci.filter(it => consentDone(v.f, it)).length; h += `<div style="margin-top:8px"><span class="chip ${d === ci.length ? 'ok' : 'late'}">Zustimmungen Dritter: ${d} von ${ci.length} erteilt</span></div>`; } }
   h += `<div class="route" aria-label="Fortschritt">${stations(v).map(s => `<div class="stop ${s.cls}"><i aria-hidden="true"></i><span>${esc(s.l)}</span><span class="sub">${esc(s.o)}</span></div>`).join('')}</div>`;
@@ -1377,6 +1487,8 @@ document.addEventListener('toggle', e => { const s = e.target.closest && e.targe
 document.addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'fbopen'){ openFb('Allgemein'); return; }
+  if (b.id === 'flowopen'){ state.view = 'flow'; state.ui = {}; renderAll(); $('#main').scrollIntoView({block:'start', behavior:'smooth'}); return; }
+  if (b.dataset.act === 'flowprint'){ return flowPrint(); }
   if (b.id === 'gropen'){ state.view = 'gr'; state.ui = {}; renderAll(); if (gr.key && !gr.items) grLoad(); return; }
   if (b.dataset.act && b.dataset.act.startsWith('gr')) return grAct(b);
   if (b.id === 'glopen'){ $('#gldrawer').hidden = false; $('#fbdrawer').hidden = true; $('#gl_q').value = ''; renderGlossar(); $('#gl_q').focus(); return; }
