@@ -21,7 +21,7 @@ cp .env.example .env        # Zugangsdaten setzen
 docker compose up -d --build
 ```
 
-Danach ist die Laufkarte unter `http://<server>:8080` erreichbar. Mit gesetztem `BASIC_AUTH_USER` fragt der Browser nach Benutzername und Passwort.
+Danach ist die Laufkarte unter `http://<server>:8080` erreichbar. Mit gesetztem `BASIC_AUTH_USER` fragt der Browser nach Benutzername und Passwort. Alternativ öffnet der Zugangslink `https://<server>/?key=<Passwort>` die Laufkarte ohne Abfrage; der Browser merkt sich den Zugang 90 Tage. Ohne `BASIC_AUTH_USER` ist die Instanz für alle offen, die die Adresse kennen.
 Vorgänge, Feedback und Einstellungen liegen im Docker-Volume `laufkarte-daten` (`vorgaenge.json`, `feedback.json`, `config.json`) und überstehen Updates.
 
 ## Betrieb auf dem Hostinger-VPS

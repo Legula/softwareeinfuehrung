@@ -40,8 +40,15 @@ function safeEqual(a, b) {
   const ba = Buffer.from(a), bb = Buffer.from(b);
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
+// Zugangslink: /?key=<Passwort> setzt ein Cookie, danach ist keine Passwortabfrage mehr nötig
+const COOKIE_VAL = AUTH_USER ? crypto.createHash('sha256').update(AUTH_USER + ':' + AUTH_PASS).digest('hex') : '';
+function hasCookie(req) {
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)lk=([a-f0-9]{64})/);
+  return !!m && safeEqual(m[1], COOKIE_VAL);
+}
 function authorized(req) {
   if (!AUTH_USER) return true;
+  if (hasCookie(req)) return true;
   const h = req.headers.authorization || '';
   if (!h.startsWith('Basic ')) return false;
   const [u, ...p] = Buffer.from(h.slice(6), 'base64').toString('utf8').split(':');
@@ -75,6 +82,14 @@ const server = http.createServer(async (req, res) => {
   // Gesundheitsprüfung für Docker (ohne Anmeldung, gibt keine Daten preis)
   if (url.pathname === '/healthz') return send(res, 200, { ok: true });
 
+  // Zugangslink einlösen: Cookie setzen und ohne Schlüssel in der Adresse weiterleiten
+  const key = url.searchParams.get('key');
+  if (AUTH_USER && key !== null && req.method === 'GET') {
+    if (!safeEqual(key, AUTH_PASS)) return send(res, 403, 'Zugangslink ungültig', 'text/plain; charset=utf-8');
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(302, { 'Set-Cookie': `lk=${COOKIE_VAL}; Path=/; Max-Age=7776000; HttpOnly; SameSite=Lax${secure}`, 'Location': '/', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    return res.end();
+  }
   if (!authorized(req)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Laufkarte", charset="UTF-8"' });
     return res.end('Anmeldung erforderlich');
