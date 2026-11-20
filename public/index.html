@@ -243,7 +243,11 @@ const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
 const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', V3:'Bereitstellung', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahme', N3:'Organisation und {PR}', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Abgeschlossen, eingeführt'};
 const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], V3:['R15'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB'], N3:['R112'], N4:['FE'], S90:[], S99:[]};
 // Wirksame Angaben: „Unklar“ des Antragstellers wird durch die Klärung der Prüfstation ersetzt
-const KO_UNKLAR = f => !!f.ko && Object.values(f.ko).includes('unklar');
+const itemOn = (fd, i, f) => !fd.itemShow || !fd.itemShow[i] || fd.itemShow[i](f); // Prüfpunkt i einer Liste relevant?
+const optOn = (fd, k, f) => !fd.optShow || !fd.optShow[k] || fd.optShow[k](f);       // Antwortoption k wählbar?
+const PBD_NEIN = f => (f.pbd === 'unklar' ? f.pbd_klar : f.pbd) === 'nein';
+const KO_VALS = f => Object.entries(f.ko || {}).filter(([i]) => !(i === '2' && f.pbd === 'nein')).map(e => e[1]); // ohne nicht relevante Punkte
+const KO_UNKLAR = f => KO_VALS(f).includes('unklar');
 const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
 const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
 const PR_ABGELEHNT = f => f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'nein';
@@ -321,7 +325,7 @@ const FIELDS = [
    h:'Hilft {DSB} und {PR}, früh einzuschätzen, ob eine Folgenabschätzung oder Zustimmung nötig ist. „Weiß nicht“ ist ausdrücklich erlaubt.'},
   {id:'fin', sec:2, own:'FE', st:['S0'], t:'radio', l:'Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:JNU,
    h:'Dann prüft {R141} das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der GPA NRW.'},
-  {id:'ko', sec:2, own:'FE', st:['S0'], t:'q', l:'KO-Kriterien', req:1, answers:[['ja','Erfüllt'],['unklar','Unklar'],['nein','Nicht erfüllt']],
+  {id:'ko', sec:2, own:'FE', st:['S0'], t:'q', l:'KO-Kriterien', req:1, itemShow:{2:f=>f.pbd!=='nein'}, answers:[['ja','Erfüllt'],['unklar','Unklar'],['nein','Nicht erfüllt']],
    items:['Kein Verstoß gegen Innenrecht (z. B. {DA})','Kein Parallelprodukt zu einer in der Verwaltung eingesetzten Lösung, soweit bekannt (One-Product-Strategie)','Bei personenbezogenen Daten: Verarbeitung in EU/EWR, Auftragsverarbeitungsvertrag möglich','Rollen- und Rechtekonzept sowie Protokollierung vorhanden','Barrierefreiheit nach BITV NRW, sofern relevant'],
    h:'„Nicht erfüllt“ sperrt das Absenden. „Unklar“ ist erlaubt und wird von {R013} und {R151} geklärt. Platzhalter, bis die Fachlichkeiten die finale Liste liefern.'},
   // Abschnitt 3
@@ -350,9 +354,9 @@ const FIELDS = [
    h:'Bei B beteiligt der Antragsteller die Stellen im Auswahlprozess selbst; danach folgt die abschließende Stellungnahme von {DSB} und {ISB}.'},
   {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software', req:1, show:f=>f.ergebnis==='A'},
   {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle.', show:f=>f.ergebnis==='A'},
-  {id:'gonrw', sec:4, own:'R013', st:['N1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. {R141} wird automatisch informiert. Bei „finanzrelevant: Ja“ der FE vorbelegt.'},
+  {id:'gonrw', sec:4, own:'R013', st:['N1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', show:f=>!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. {R141} wird automatisch informiert. Bei „finanzrelevant: Ja“ der FE vorbelegt.'},
   // Abschnitt 4: IT
-  {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU,
+  {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU, itemShow:{2:f=>has(f.art,'schnittstelle')},
    items:['Betriebsart ist geklärt','Anmeldung über zentrale Benutzerverwaltung möglich','Schnittstellen sind beschrieben','Datensicherung und Wiederherstellung geregelt','Arbeitsplatz-Anforderungen erfüllt']},
   {id:'stn_15', sec:4, own:'R15', st:['N1'], t:'textarea', l:'Stellungnahme {R15}', req:1},
   {id:'votum_15', sec:4, own:'R15', st:['N1'], t:'radio', l:'Votum {R15}', req:1, opts:VOTUM_B, h:'„Nicht befürwortet“ führt zur Klärung beim Antragsteller. Die Gründe gehören in die Stellungnahme.'},
@@ -367,14 +371,15 @@ const FIELDS = [
   {id:'vergabe_b', sec:5, t:'info', l:'Hinweis: Die Vergabe klären Sie bitte parallel mit der Vergabestelle.'},
   {id:'doku_b', sec:5, own:'FE', st:['B1'], t:'file', l:'Weitere Dokumentation (optional)'},
   // Abschnitt 6: {DSB}
-  {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU,
+  {id:'dsb_keine', sec:6, t:'info', l:'Nach den bisherigen Angaben werden keine personenbezogenen Daten verarbeitet. Die Prüfpunkte entfallen; bitte bestätigen Sie das kurz mit Ihrem Votum.', show:f=>PBD_NEIN(f)},
+  {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU, show:f=>!PBD_NEIN(f),
    items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 DSG NRW)','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich']},
   {id:'votum_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'radio', l:'Votum {DSB}', req:1, opts:VOTUM},
   {id:'auflagen_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Auflagen {DSB}', req:1, show:f=>f.votum_dsb==='auflagen', h:'Eine Auflage je Zeile.'},
   {id:'empf_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung {DSB}', req:1, show:f=>f.votum_dsb==='nein'},
   {id:'anlage_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'file', l:'Stellungnahme als Anlage (optional)'},
   // Abschnitt 6: {ISB}
-  {id:'chk_isb', sec:6, own:'ISB', st:['V12','N2'], t:'q', l:'Prüfpunkte IT-Sicherheit', req:1, answers:JNU,
+  {id:'chk_isb', sec:6, own:'ISB', st:['V12','N2'], t:'q', l:'Prüfpunkte IT-Sicherheit', req:1, answers:JNU, itemShow:{2:f=>has(f.art,'saas')||has(f.art,'betriebsart')||has(f.art,'portal')},
    items:['Schutzbedarf ist ermittelt','Bereichskonzept durch den Antragsteller erforderlich','Bei SaaS: Anbieter weist Sicherheitsnachweis vor (z. B. BSI C5, ISO 27001)','Notfall- und Wiederanlaufregelung vorhanden']},
   {id:'votum_isb', sec:6, own:'ISB', st:['V12','N2'], t:'radio', l:'Votum {ISB}', req:1, opts:VOTUM},
   {id:'auflagen_isb', sec:6, own:'ISB', st:['V12','N2'], t:'textarea', l:'Auflagen {ISB}', req:1, show:f=>f.votum_isb==='auflagen', h:'Eine Auflage je Zeile.'},
@@ -387,7 +392,8 @@ const FIELDS = [
   // Abschnitt 7
   {id:'org_auswirk', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
   {id:'stn_112', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
-  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1,
+  {id:'pr_kontrolle', sec:7, t:'info', kind:'warn', l:'Der Antragsteller gibt an, dass eine Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich ist. „Keine Beteiligung“ steht deshalb nicht zur Auswahl.', show:f=>f.pbd!=='nein'&&!!f.ds_vor&&f.ds_vor[4]==='ja'},
+  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
    opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach {BGA} erforderlich']],
    h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit {PR} abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
   {id:'pr_datum', sec:7, own:'R112', st:['V12','N3'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
@@ -395,7 +401,7 @@ const FIELDS = [
    h:'Erst eintragen, wenn das Ergebnis vorliegt; bis dahin „Zwischenspeichern“. Bei „Nicht zugestimmt“ geht der Vorgang zur Klärung an den Antragsteller.'},
   {id:'pr_begr', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
   // Abschnitt 8
-  {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, opts:[['erneut','Überarbeitet erneut vorlegen (geht an die Stellen, die nicht zugestimmt haben)'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
+  {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, optShow:{kd:f=>!f.kl_pr}, opts:[['erneut','Überarbeitet erneut vorlegen (geht an die Stellen, die nicht zugestimmt haben)'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
   {id:'klaerung_doku', sec:8, own:'FE', st:['N4'], t:'textarea', l:'Dokumentation der Klärung', req:1},
   {id:'kd_entscheidung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Entscheidung durch {KD}', req:1, opts:[['freigabe','Freigabe'],['ablehnung','Ablehnung']], show:f=>f.klaerung==='kd'},
   {id:'kd_vermerk', sec:8, own:'FE', st:['N4'], t:'file', l:'Vermerk {KD} (optional)', show:f=>f.klaerung==='kd'},
@@ -403,7 +409,7 @@ const FIELDS = [
   {id:'zust', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'consent', l:'Zustimmungen und Zulassungen'},
   {id:'zust_weitere', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'repeat', rows:1, ph:['Weitere Zustimmung (z. B. Fachaufsicht)','Erteilt am / Aktenzeichen'], l:'Weitere Zustimmungen (optional)'},
   // Abschnitt 10
-  {id:'bereitstellung', sec:10, own:'R15', st:['V3'], t:'radio', l:'Bereitstellung durch', req:1, col:1, opts:[['15','{R15}'],['saas','SaaS-Anbieter (Zugang eingerichtet)'],['entfaellt','Entfällt (Portalnutzung Dritter)']]},
+  {id:'bereitstellung', sec:10, own:'R15', st:['V3'], t:'radio', l:'Bereitstellung durch', req:1, col:1, optShow:{saas:f=>has(f.art,'saas')||has(f.art,'betriebsart'), entfaellt:f=>has(f.art,'portal')}, opts:[['15','{R15}'],['saas','SaaS-Anbieter (Zugang eingerichtet)'],['entfaellt','Entfällt (Portalnutzung Dritter)']]},
   {id:'bereit_am', sec:10, own:'R15', st:['V3'], t:'date', l:'Bereitgestellt am', req:1},
   {id:'kataster', sec:10, own:'R15', st:['V3'], t:'check', l:'In das Softwarekataster aufgenommen', req:1},
   {id:'kataster_id', sec:10, own:'R15', st:['V3'], t:'text', l:'Kataster-Nummer (optional)'}
@@ -572,7 +578,7 @@ function transition(v, from = v.status, freigabe = false){
   // Nicht zugestimmt: Klärung beim Antragsteller, egal in welchem Pfad
   const neg = freigabe ? [] : rejectors(v, from);
   if (neg.length){
-    v.kl = {from, who: neg};
+    v.kl = {from, who: neg}; f.kl_pr = neg.includes('R112'); // fehlende Zustimmung des Personalrats kann die Leitung nicht ersetzen
     ['klaerung','klaerung_doku','kd_entscheidung','kd_vermerk'].forEach(k => delete f[k]);
     go('N4');
     const namen = neg.map(r => r === 'R112' ? SHORT.PR : SHORT[r]).join(', ');
@@ -624,7 +630,7 @@ function transition(v, from = v.status, freigabe = false){
 
 // ===== Zustimmungen Dritter: Pflicht ergibt sich aus Angaben und Stellungnahmen =====
 function consentItems(f){
-  const dsb = f.chk_dsb || {}, isb = f.chk_isb || {};
+  const dsb = PBD_NEIN(f) ? {} : (f.chk_dsb || {}), isb = f.chk_isb || {};
   return [
     {k:'gpa', l:'Zulassung der GPA NRW (Finanzsoftware)', rg:'§ 94 Abs. 2 GO NRW', req: FIN(f), why:'Antragsteller: finanzrelevant'},
     {k:'rpa', l:'Programmprüfung durch {R141} vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen)', req: !!f.gonrw || FIN(f), why:'prüfungspflichtig'},
@@ -655,11 +661,12 @@ function canEdit(fd, v){
   if (myOpenRf(v, role) && fd.st.some(s => v.reached.includes(s))) return true;
   return false;
 }
-function isEmpty(fd, x){
+function isEmpty(fd, x, f = {}){
   switch (fd.t){
     case 'checks': return fd.req === 'all' ? !(Array.isArray(x) && x.length === fd.opts.length) : !(Array.isArray(x) && x.length);
     case 'check': return !x;
-    case 'q': return !x || fd.items.some((_, i) => !x[i]);
+    case 'q': return !x ? fd.items.some((_, i) => itemOn(fd, i, f)) : fd.items.some((_, i) => itemOn(fd, i, f) && !x[i]);
+    case 'radio': return x == null || x === '' || !optOn(fd, x, f); // nicht mehr wählbare Option gilt als unbeantwortet
     case 'repeat': return !Array.isArray(x) || x.filter(r => r && (r.p || '').trim()).length < (fd.min || 1);
     default: return x == null || String(x).trim() === '';
   }
@@ -667,12 +674,13 @@ function isEmpty(fd, x){
 function validate(v, role){
   const f = curF(v), errs = [];
   FIELDS.filter(fd => fd.own === role && fd.st && fd.st.includes(v.status) && visible(fd, v)).forEach(fd => {
-    if (fd.req && isEmpty(fd, f[fd.id])) errs.push(fd.l + (fd.t === 'q' ? ': bitte alle Punkte beantworten' : fd.t === 'repeat' ? `: mindestens ${fd.min} Einträge` : fd.req === 'all' ? ': bitte alle Schritte bestätigen' : ' fehlt'));
+    if (fd.req && isEmpty(fd, f[fd.id], f)) errs.push(fd.l + (fd.t === 'q' ? ': bitte alle Punkte beantworten' : fd.t === 'repeat' ? `: mindestens ${fd.min} Einträge` : fd.req === 'all' ? ': bitte alle Schritte bestätigen' : ' fehlt'));
   });
   if (v.status === 'S0' && role === 'FE'){
     if (f.vza && f.anlass !== 'neu' && !/^\s*\d+([.,]\d+)?\s*$/.test(f.vza)) errs.push('Einsparung bitte als Zahl angeben, z. B. 0,5');
     if (Array.isArray(f.art) && f.art.length === 1 && f.art[0] === 'hardware') errs.push('Reine Hardware bitte über das Hardware-Formular beantragen');
-    if (f.ko && Object.values(f.ko).includes('nein')) errs.push('Ein KO-Kriterium ist nicht erfüllt. Bitte vorab mit {R013} klären');
+    if (f.pbd !== 'nein' && f.ds_vor && f.ds_vor[0] === 'ja' && f.ko && f.ko[2] === 'ja') errs.push('Widerspruch: Sie geben an, dass Daten außerhalb von EU/EWR verarbeitet werden. Das KO-Kriterium „Verarbeitung in EU/EWR“ kann dann nicht „Erfüllt“ sein. Bitte eine der beiden Angaben ändern oder „Unklar“ wählen');
+    if (KO_VALS(f).includes('nein')) errs.push('Ein KO-Kriterium ist nicht erfüllt. Bitte vorab mit {R013} klären');
   }
   if (v.status === 'V3' && role === 'R15') consentMissing(f).forEach(it => errs.push('Zustimmung Dritter fehlt: ' + it.l));
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && !f.kd_entscheidung) errs.push('Entscheidung durch {KD} fehlt');
@@ -799,9 +807,9 @@ function stations(v){
   s.push(v.status === 'S90' ? {k:'S90', l:'Ende ohne Einführung', o:''} : {k:'S99', l:'Abschluss + Kataster', o:''});
   return s.map(x => Object.assign(x, {cls: x.k === v.status ? (x.k === 'S90' ? 'end' : FINAL(x.k) ? 'done' : 'now') : r.includes(x.k) ? 'done' : ''}));
 }
-function optsHtml(fd, x, ed, multi){
+function optsHtml(fd, x, ed, multi, f = {}){
   const name = 'f_' + fd.id;
-  return `<div class="opts ${fd.col ? 'col' : ''}">` + fd.opts.map(([k, l]) => {
+  return `<div class="opts ${fd.col ? 'col' : ''}">` + fd.opts.filter(([k]) => optOn(fd, k, f)).map(([k, l]) => {
     const on = multi ? has(x, k) : x === k;
     return `<label><input type="${multi ? 'checkbox' : 'radio'}" name="${name}" data-f="${fd.id}" data-k="${esc(k)}" ${on ? 'checked' : ''} ${ed ? '' : 'disabled'}> <span>${esc(l)}</span></label>`;
   }).join('') + `</div>`;
@@ -826,7 +834,7 @@ function fieldHtml(fd, v){
       body = ed ? `<input type="${fd.t}" id="${id}" data-f="${fd.id}" value="${esc(x || '')}">` : roText(fd, x); break;
     case 'textarea':
       body = ed ? `<textarea id="${id}" data-f="${fd.id}">${esc(x || '')}</textarea>` : roText(fd, x); break;
-    case 'radio': body = ed ? optsHtml(fd, x, ed, false) : roText(fd, x); break;
+    case 'radio': body = ed ? optsHtml(fd, optOn(fd, x, curF(v)) ? x : null, ed, false, curF(v)) : roText(fd, x); break;
     case 'checks': body = ed ? optsHtml(fd, x, ed, true) : roText(fd, x); break;
     case 'check':
       body = ed ? `<label class="opts"><input type="checkbox" id="${id}" data-f="${fd.id}" ${x ? 'checked' : ''}> <span>Ja</span></label>` : roText(fd, x); break;
@@ -834,7 +842,9 @@ function fieldHtml(fd, v){
       body = ed ? `<input type="file" id="${id}" data-f="${fd.id}">${x ? `<div class="sub">Aktuell: ${esc(x)}</div>` : ''}<div class="sub">Prototyp: Es wird nur der Dateiname gespeichert.</div>` : roText(fd, x); break;
     case 'q': {
       const ans = fd.answers;
+      const fq = curF(v);
       body = fd.items.map((it, i) => {
+        if (!itemOn(fd, i, fq)) return '';
         const cur = x && x[i];
         const ctl = ed ? `<span class="seg" role="radiogroup" aria-label="${esc(it)}">` + ans.map(([k, l]) => `<label><input type="radio" name="${id}_${i}" data-f="${fd.id}" data-k="${i}" data-v="${k}" ${cur === k ? 'checked' : ''}>${esc(l)}</label>`).join('') + `</span>`
           : `<span class="chip ${cur === 'nein' ? 'late' : cur === 'unklar' ? '' : cur ? 'ok' : ''}">${esc((ans.find(a => a[0] === cur) || [,'offen'])[1])}</span>`;
@@ -972,7 +982,7 @@ const PROTO_CSS = 'body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;co
 function protoVal(fd, x, f){
   const leer = '–';
   if (fd.t === 'consent') return '<ul>' + consentItems(f).filter(it => it.req || consentDone(f, it)).map(it => { const c = (x || {})[it.k] || {}; return `<li>${esc(it.l)}: ${consentDone(f, it) ? 'erteilt' + (it.auto ? ' am ' + esc(fmtDateStr(it.auto)) : c.am ? ' am ' + esc(fmtDateStr(c.am)) : '') + (c.dok ? ', Nachweis: ' + esc(c.dok) : '') : 'offen'}${it.req ? ' (Pflicht)' : ''}</li>`; }).join('') + '</ul>';
-  if (fd.t === 'q') return '<ul>' + fd.items.map((it, i) => `<li>${esc(it)}: ${esc((fd.answers.find(a => a[0] === (x || {})[i]) || [,'offen'])[1])}</li>`).join('') + '</ul>';
+  if (fd.t === 'q') return '<ul>' + fd.items.map((it, i) => !itemOn(fd, i, f) ? '' : `<li>${esc(it)}: ${esc((fd.answers.find(a => a[0] === (x || {})[i]) || [,'offen'])[1])}</li>`).join('') + '</ul>';
   if (fd.t === 'repeat') return Array.isArray(x) && x.some(r => r.p) ? '<ul>' + x.filter(r => r.p).map(r => `<li>${esc(r.p)}${r.e ? ': ' + esc(r.e) : ''}</li>`).join('') + '</ul>' : leer;
   if (x == null || x === '' || (Array.isArray(x) && !x.length)) return leer;
   if (fd.t === 'radio') return esc((fd.opts.find(o => o[0] === x) || [,x])[1]);
