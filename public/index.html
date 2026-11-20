@@ -993,6 +993,10 @@ function protoBody(v){
   });
   if (af.length) h += `<h2>Auflagen</h2><ul>${af.map(a => `<li>${esc(a)}</li>`).join('')}</ul>${f.auflagen_ok ? `<p>Vom Antragsteller zur Kenntnis genommen am ${fmt(f.auflagen_ok)}.</p>` : ''}`;
   if (rfs.length) h += `<h2>Rückfragen und Hilfen</h2><table class="lz"><tr><th>Zeit</th><th>Von</th><th>An</th><th>Anfrage</th><th>Antwort</th></tr>${rfs.map(r => `<tr><td>${fmtT(r.ts)}</td><td>${esc(SHORT[r.from])}</td><td>${esc(SHORT[r.to])}</td><td>${esc(r.frage)}</td><td>${r.offen ? 'offen' : esc(r.antwort) + ' (' + fmtT(r.ts_antwort) + ')'}</td></tr>`).join('')}</table>`;
+  // Anlagenverzeichnis: alle hochgeladenen Dateien mit Herkunft, damit sie zusammen mit dem Protokoll abgelegt werden
+  const anl = FIELDS.filter(fd => fd.t === 'file' && f[fd.id] && visible(fd, v)).map(fd => [f[fd.id], fd.l.replace(' (optional)', ''), SHORT[fd.own] || '']);
+  consentItems(f).forEach(it => { const c = (f.zust || {})[it.k]; if (c && c.dok) anl.push([c.dok, 'Nachweis: ' + it.l, SHORT.FE]); });
+  h += `<h2>Anlagen</h2>${anl.length ? `<table class="lz"><tr><th>Nr.</th><th>Datei</th><th>Inhalt</th><th>Von</th></tr>${anl.map((a, i) => `<tr><td>${i + 1}</td><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${esc(a[2])}</td></tr>`).join('')}</table><p class="meta">Die Anlagen sind zusammen mit diesem Protokoll abzulegen.</p>` : '<p class="meta">Keine Anlagen.</p>'}`;
   h += `<h2>Laufzettel</h2><table class="lz"><tr><th>Zeit</th><th>Stelle</th><th>Aktion</th><th>Kommentar</th></tr>${v.log.map(e => `<tr><td>${fmtT(e.ts)}</td><td>${esc(e.rolle)}</td><td>${esc(e.aktion)}</td><td>${esc(e.kommentar)}</td></tr>`).join('')}</table>
     <p class="meta">Automatisch aus der Laufkarte erzeugt. Benachrichtigungen: ${v.mails.length} protokolliert.</p></div>`;
   return h;
