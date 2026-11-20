@@ -1,6 +1,6 @@
 # Laufkarte Softwareeinführung
 
-Klickbarer Prototyp der digitalen Laufkarte für Softwareeinführungen. Er dient als Vorlage für das spätere FormCycle-Formular.
+Klickbarer Prototyp der digitalen Laufkarte für Softwareeinführungen. Er dient dazu, den Ablauf abzustimmen; die spätere technische Umsetzung ist offen.
 Alle Stellen (Antragsteller, IT, Digitalisierung, Organisation, Datenschutz, Informationssicherheit) bearbeiten denselben Vorgang nacheinander oder parallel.
 Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
