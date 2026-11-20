@@ -129,6 +129,7 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
 .mail .subj{font-weight:600;margin:4px 0}
 .mail pre{white-space:pre-wrap;font-family:var(--font-body);font-size:.85rem;margin:6px 0 0;color:var(--muted)}
 [hidden]{display:none!important}
+#links a{color:var(--accent)}
 .drawer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;z-index:15;padding:16px;display:grid;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
 .drawer h3{margin:0;font-size:1.05rem}
 .fbitem{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px}
@@ -157,6 +158,7 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
       <button type="button" id="cfgopen">Einstellungen</button>
     </div>
   </header>
+  <nav id="links" aria-label="Weiterführende Links" hidden style="display:flex;gap:6px 16px;flex-wrap:wrap;margin:0 0 10px;font-size:.9rem"></nav>
   <div class="testbar" role="note">
     <span id="modeinfo"></span>
     <span id="storeinfo" class="sub"></span>
@@ -194,8 +196,11 @@ const DEFAULT_CFG = {
   titel:'', testmodus:true, testmail:'testpostfach@example.org', frist:10,
   rollen:{FE:{label:'Antragsteller', mail:''}, R151:{label:'IT-Bestandsprüfung', mail:''}, R013:{label:'Digitalisierung', mail:''}, R15:{label:'IT', mail:''}, R112:{label:'Organisation', mail:''},
     DSB:{label:'Datenschutz', mail:''}, ISB:{label:'Informationssicherheit', mail:''}, PR:{label:'Personalrat', mail:''}, R141:{label:'Rechnungsprüfung', mail:''}, KAT:{label:'Softwarekataster', mail:''}},
-  begriffe:{KD:'Verwaltungsleitung', DA:'Dienstanweisung IT', BGA:'Dienstvereinbarung IT'}
+  begriffe:{KD:'Verwaltungsleitung', DA:'Dienstanweisung IT', BGA:'Dienstvereinbarung IT'},
+  links:[] // weiterführende Links in der Kopfzeile, z. B. Konzept oder Quellcode: {titel, url}
 };
+const MAX_LINKS = 5;
+const urlOk = u => /^https?:\/\/[^\s"'<>]+$/i.test(u);
 let cfg = JSON.parse(JSON.stringify(DEFAULT_CFG));
 let ROLES = {}, SHORT = {};
 function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte legen
@@ -205,6 +210,8 @@ function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte lege
   if (Number.isFinite(+x.frist) && +x.frist > 0) c.frist = Math.round(+x.frist);
   Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); } });
   Object.keys(c.begriffe).forEach(k => { if (x.begriffe && typeof x.begriffe[k] === 'string' && x.begriffe[k].trim()) c.begriffe[k] = x.begriffe[k].trim(); });
+  // Links: nur http(s)-Adressen mit Titel übernehmen
+  if (Array.isArray(x.links)) c.links = x.links.filter(l => l && typeof l.titel === 'string' && l.titel.trim() && typeof l.url === 'string' && urlOk(l.url.trim())).slice(0, MAX_LINKS).map(l => ({titel: l.titel.trim(), url: l.url.trim()}));
   return c;
 }
 function applyCfg(x){
@@ -811,6 +818,8 @@ function secHtml(sec, v){
   return `<details class="sec ${mine ? 'mine' : ''}" data-sec="${sec.n}" ${open ? 'open' : ''}><summary><div><h3>${sec.n} ${esc(sec.title)}</h3><span class="oe">${esc(sec.oe)}</span></div><span class="sumright"><button type="button" class="ghost secfb" data-act="fbsec" data-k="${sec.n}">Feedback</button>${badge}</span></summary><div class="secbody">${inner}</div></details>`;
 }
 function syncHead(){
+  const ln = $('#links'); ln.hidden = !cfg.links.length;
+  ln.innerHTML = cfg.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.titel)} ↗</a>`).join('');
   $('#orgname').textContent = cfg.titel ? ' · ' + cfg.titel : '';
   $('#modeinfo').innerHTML = cfg.testmodus ? `<b>Testmodus</b> · Alle Mails gehen an ${esc(cfg.testmail)}` : `<b>Echtbetrieb-Adressen</b> · Mails gehen an die Adresse der jeweiligen Stelle`;
   const rs = $('#role'); if (!ROLES[state.role]) state.role = 'FE';
@@ -826,6 +835,8 @@ function renderCfg(){
     <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails.</p>
       <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Funktion</th><th>Bezeichnung</th><th>Mailadresse</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
     <div class="fld"><label class="lbl">Begriffe</label><div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(cfg.begriffe).map(k => `<tr><td>${esc(bl[k])}</td><td><input type="text" id="cfg_b_${k}" aria-label="${esc(bl[k])}" value="${esc(c.begriffe[k])}"></td></tr>`).join('')}</tbody></table></div></div>
+    <div class="fld"><label class="lbl">Links in der Kopfzeile</label><p class="help">Zum Beispiel Konzept, Quellcode oder Dienstanweisung. Alle, die die Laufkarte nutzen, sehen diese Links. Leere Zeilen werden ignoriert.</p>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Titel</th><th>Adresse (https://…)</th></tr></thead><tbody>${Array.from({length: MAX_LINKS}, (_, i) => { const l = (c.links || [])[i] || {titel:'', url:''}; return `<tr><td><input type="text" id="cfg_lt_${i}" aria-label="Titel Link ${i + 1}" value="${esc(l.titel)}"></td><td><input type="text" inputmode="url" id="cfg_lu_${i}" aria-label="Adresse Link ${i + 1}" placeholder="https://…" value="${esc(l.url)}"></td></tr>`; }).join('')}</tbody></table></div></div>
     <div class="fld"><label class="opts"><input type="checkbox" id="cfg_test" ${c.testmodus ? 'checked' : ''}> <span><b>Testmodus</b>: alle Mails an eine einzige Adresse leiten</span></label></div>
     <div class="fld"><label class="lbl" for="cfg_testmail">Test-Mailadresse</label><input type="text" inputmode="email" id="cfg_testmail" value="${esc(c.testmail)}"></div>
     <div class="fld"><label class="lbl" for="cfg_frist">Frist je Station in Arbeitstagen</label><input type="text" inputmode="numeric" id="cfg_frist" value="${esc(c.frist)}" style="max-width:120px"></div>
@@ -837,7 +848,8 @@ function renderCfg(){
   </div>`;
 }
 function readCfgForm(){
-  const x = {titel: $('#cfg_titel').value.trim(), testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}};
+  const x = {titel: $('#cfg_titel').value.trim(), testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}, links:[]};
+  for (let i = 0; i < MAX_LINKS; i++){ const t = $('#cfg_lt_' + i).value.trim(), u = $('#cfg_lu_' + i).value.trim(); if (t || u) x.links.push({titel: t, url: u}); }
   Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim()}; });
   Object.keys(cfg.begriffe).forEach(k => { x.begriffe[k] = $('#cfg_b_' + k).value.trim(); });
   return x;
@@ -846,6 +858,7 @@ function checkCfg(x){
   const errs = [], mailOk = m => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m);
   Object.keys(x.rollen).forEach(k => { if (!x.rollen[k].label) errs.push('Bezeichnung für ' + DEFAULT_CFG.rollen[k].label + ' fehlt'); if (x.rollen[k].mail && !mailOk(x.rollen[k].mail)) errs.push('Mailadresse für ' + (x.rollen[k].label || k) + ' ist ungültig'); });
   if (x.testmodus && !mailOk(x.testmail)) errs.push('Test-Mailadresse ist ungültig');
+  (x.links || []).forEach((l, i) => { if (!l.titel) errs.push('Link ' + (i + 1) + ': Titel fehlt'); if (!urlOk(l.url || '')) errs.push('Link ' + (l.titel || i + 1) + ': Adresse muss mit https:// beginnen'); });
   if (!(+x.frist > 0)) errs.push('Frist bitte als Zahl größer 0 angeben');
   return errs;
 }

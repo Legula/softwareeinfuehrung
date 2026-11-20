@@ -6,6 +6,8 @@ Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
 **Einstellungen:** Über den Knopf „Einstellungen“ lassen sich die Bezeichnungen aller Organisationseinheiten, ihre Mailadressen, zentrale Begriffe, die Frist je Station und der Testmodus ändern. Die Werte gelten für alle, die die Instanz nutzen. Sie liegen nur im Daten-Volume (`config.json`), nicht im Repository. Über „Einstellungen übertragen“ lassen sie sich als Text kopieren und in einer anderen Instanz einfügen.
 
+**Links:** In den Einstellungen lassen sich bis zu fünf Links hinterlegen (z. B. Konzept, Quellcode), die in der Kopfzeile erscheinen.
+
 **Testmodus:** Im Testmodus gehen alle Mails an eine einzige Adresse (Standard: Platzhalter `testpostfach@example.org`). Im Prototyp werden Mails nur protokolliert und nicht verschickt.
 
 **Feedback:** Über „Feedback geben“ und den Knopf „Feedback“ an jedem Abschnitt hinterlassen Testende Rückmeldungen, auf Wunsch mit Namen. Die „Feedback-Liste“ zeigt alle Einträge mit Status und kopiert sie als Text.
