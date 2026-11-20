@@ -250,6 +250,7 @@ const KO_VALS = f => Object.entries(f.ko || {}).filter(([i]) => !(i === '2' && f
 const KO_UNKLAR = f => KO_VALS(f).includes('unklar');
 const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
 const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
+const ONLINE = f => f.online === 'ja' || f.online === 'unklar'; // Onlinedienst für Bürger oder Unternehmen: EfA-Prüfung nötig
 const PR_ABGELEHNT = f => f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'nein';
 const FINAL = s => s === 'S90' || s === 'S99';
 
@@ -318,6 +319,8 @@ const FIELDS = [
   {id:'betriebsart_alt', sec:2, own:'FE', st:['S0'], t:'text', l:'Bisherige Software und Betriebsart', req:1, show:f=>has(f.art,'betriebsart')||has(f.art,'modul'), h:'Im Echtbetrieb Auswahl aus dem Softwarekataster.'},
   {id:'portal', sec:2, own:'FE', st:['S0'], t:'text', l:'Portal und Betreiber', req:1, show:f=>has(f.art,'portal'),
    h:'Name des Portals und wer es betreibt, z. B. ein Landesportal.'},
+  {id:'online', sec:2, own:'FE', st:['S0'], t:'radio', l:'Richtet sich die Lösung an Bürgerinnen, Bürger oder Unternehmen (Onlinedienst)?', req:1, opts:JNU,
+   h:'Ja, wenn Menschen außerhalb der Verwaltung die Lösung selbst nutzen, z. B. einen Antrag online stellen oder einen Termin buchen. Dann prüft {R013}, ob es dafür schon einen nachnutzbaren Dienst gibt (EfA).'},
   {id:'pbd', sec:2, own:'FE', st:['S0'], t:'radio', l:'Werden personenbezogene Daten verarbeitet?', req:1, opts:JNU,
    h:'Ja, sobald Namen, Adressen, personenbezogene Aktenzeichen oder Daten von Beschäftigten verarbeitet werden.'},
   {id:'ds_vor', sec:2, own:'FE', st:['S0'], t:'q', l:'Datenschutz-Vorprüfung', req:1, show:f=>f.pbd&&f.pbd!=='nein', answers:[['ja','Ja'],['nein','Nein'],['unklar','Weiß nicht']],
@@ -346,13 +349,20 @@ const FIELDS = [
   {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
   // Abschnitt 4: {R013}
   {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU,
-   items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Onlinezugang (OZG) betroffen','Nutzen ist messbar beschrieben']},
+   items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Nutzen ist messbar beschrieben']},
   {id:'stn_013', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Stellungnahme {R013}', req:1},
   {id:'votum_013', sec:4, own:'R013', st:['N1'], t:'radio', l:'Votum {R013}', req:1, opts:VOTUM_B, h:'„Nicht befürwortet“ führt zur Klärung beim Antragsteller. Die Gründe gehören in die Stellungnahme.'},
-  {id:'ergebnis', sec:4, own:'R013', st:['N1'], t:'radio', l:'Ergebnis der Marktsicht', req:1, col:1,
-   opts:[['A','A: Fachlich kommt nur eine Software in Frage'],['B','B: Mehrere Produkte kommen in Frage, Antragsteller führt Auswahl durch']],
+  {id:'efa', sec:4, own:'R013', st:['N1'], t:'radio', l:'EfA-Prüfung: Gibt es einen nachnutzbaren Onlinedienst (EfA-Dienst oder Landeslösung)?', req:1, col:1, show:f=>ONLINE(f),
+   opts:[['nachnutzbar','Vorhanden und nachnutzbar'],['passt_nicht','Vorhanden, passt aber nicht'],['keiner','Nicht vorhanden'],['kein_dienst','Kein Onlinedienst, Prüfung entfällt']], optShow:{kein_dienst:f=>f.online==='unklar'},
+   h:'EfA-First: Ein nachnutzbarer Dienst geht einer eigenen Beschaffung vor. Eine Abweichung ist zu begründen.'},
+  {id:'efa_vermerk', sec:4, own:'R013', st:['N1'], t:'text', l:'Geprüfter Dienst bzw. Quelle der Prüfung', req:1, show:f=>ONLINE(f)&&!!f.efa&&f.efa!=='kein_dienst',
+   h:'Z. B. Name des Dienstes oder „EfA-Marktplatz geprüft am …“.'},
+  {id:'efa_abweichung', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Begründung der Abweichung von EfA-First', req:1, show:f=>ONLINE(f)&&f.efa==='nachnutzbar'&&!!f.ergebnis&&f.ergebnis!=='E',
+   h:'Warum wird der nachnutzbare Dienst nicht genutzt?'},
+  {id:'ergebnis', sec:4, own:'R013', st:['N1'], t:'radio', l:'Ergebnis der Marktsicht', req:1, col:1, optShow:{E:f=>ONLINE(f)&&f.efa==='nachnutzbar'},
+   opts:[['E','Nachnutzung: Der vorhandene Onlinedienst wird genutzt (kein Auswahlprozess)'],['A','A: Fachlich kommt nur eine Software in Frage'],['B','B: Mehrere Produkte kommen in Frage, Antragsteller führt Auswahl durch']],
    h:'Bei B beteiligt der Antragsteller die Stellen im Auswahlprozess selbst; danach folgt die abschließende Stellungnahme von {DSB} und {ISB}.'},
-  {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software', req:1, show:f=>f.ergebnis==='A'},
+  {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software bzw. Dienst', req:1, show:f=>f.ergebnis==='A'||f.ergebnis==='E'},
   {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle.', show:f=>f.ergebnis==='A'},
   {id:'gonrw', sec:4, own:'R013', st:['N1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', show:f=>!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. {R141} wird automatisch informiert. Bei „finanzrelevant: Ja“ der FE vorbelegt.'},
   // Abschnitt 4: IT
@@ -603,7 +613,7 @@ function transition(v, from = v.status, freigabe = false){
       go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen' + frei); consentMail();
       mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', (freigabe ? 'wurde durch {KD} freigegeben.' : 'wurde von allen Stellen bearbeitet.') + ' Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
     case 'N1':
-      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
+      if (f.ergebnis !== 'B'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', f.ergebnis === 'E' ? 'Zur Information: Nachnutzung eines vorhandenen Onlinedienstes' : 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
       else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren' + frei); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
       break;
     case 'B1':
@@ -713,7 +723,7 @@ function stationSummary(v, role){
   const f = v.f, lab = (fd, x) => (FIELDS.find(q => q.id === fd).opts.find(o => o[0] === x) || [,''])[1];
   switch (role){
     case 'R151': return f.strategie === 'nein' ? 'Ablehnung IT-Strategie' : lab('verfahren', f.verfahren);
-    case 'R013': return 'Votum: ' + lab('votum_013', f.votum_013) + ', Ergebnis ' + (f.ergebnis || '');
+    case 'R013': return 'Votum: ' + lab('votum_013', f.votum_013) + ', Ergebnis ' + (f.ergebnis === 'E' ? 'Nachnutzung (EfA)' : f.ergebnis || '') + (ONLINE(f) && f.efa ? ', EfA-Prüfung: ' + lab('efa', f.efa) : '');
     case 'R15': return v.status === 'V3' ? 'Bereitstellung: ' + lab('bereitstellung', f.bereitstellung) : 'Votum: ' + lab('votum_15', f.votum_15);
     case 'DSB': return 'Votum: ' + lab('votum_dsb', f.votum_dsb);
     case 'ISB': return 'Votum: ' + lab('votum_isb', f.votum_isb);
@@ -765,9 +775,9 @@ function demoWerte(){
   return {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo)', bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
     anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, besser vorbereitete Termine.', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung',
     verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall telefonische Terminvergabe.',
-    betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
+    betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', online:'nein', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
     chk_151:['kataster','lizenz','strategie'], strategie:'ja', verfahren:'neu', sw_vorhanden:'Vorhandene Demo-Software', pbd_klar:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Mit dem Antragsteller geklärt (Demo).',
-    fb_013:q(5, 'ja'), stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
+    fb_013:q(4, 'ja'), efa:'keiner', efa_vermerk:'EfA-Marktplatz geprüft (Demo)', efa_abweichung:'Dienst deckt den Bedarf nicht (Demo).', stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
     fb_15:q(5, 'ja'), stn_15:'Technisch umsetzbar (Demo).', votum_15:'ja',
     bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)',
     chk_dsb:q(5, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
@@ -824,14 +834,14 @@ async function actDemo(){
     log(v, 'FE', 'Antrag angelegt');
     frage('FE', 'R013', 'Ich bin unsicher, ob unsere Lösung als SaaS gilt. Sie soll beim Anbieter laufen.', 'Ja, das ist SaaS. Bitte zusätzlich „Schnittstelle“ ankreuzen, weil Termine in den Kalender übergeben werden.', true);
     weiter(1);
-    erledigt('FE', {art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja',
+    erledigt('FE', {art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', online:'ja', pbd:'ja',
       ds_vor:{0:'nein',1:'nein',2:'nein',3:'nein',4:'nein',5:'unklar'}, fin:'unklar', ko:q(5, 'ja', {1:'unklar'})});
     // 3 Prüfung vorhandene Lösung: klärt „Unklar“
     weiter(3);
     erledigt('R151', {chk_151:['kataster','lizenz','strategie'], strategie:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Kein vergleichbares Produkt im Kataster. Mit dem Antragsteller geklärt: keine Zahlungsfunktion.', verfahren:'neu', hinweis_151:'Keine vorhandene Lösung. Weiter als Neueinführung.'});
     // 4 Fortschreibung
     weiter(4);
-    erledigt('R013', {fb_013:q(5, 'ja', {2:'nein'}), stn_013:'Der Ablauf ist gut beschrieben, der Nutzen messbar. Mehrere Produkte am Markt, daher Auswahlprozess.', votum_013:'ja', ergebnis:'B'});
+    erledigt('R013', {fb_013:q(4, 'ja', {2:'nein'}), efa:'passt_nicht', efa_vermerk:'EfA-Marktplatz geprüft: Terminbuchung eines anderen Landes, keine Kalenderanbindung', stn_013:'Der Ablauf ist gut beschrieben, der Nutzen messbar. Der vorhandene EfA-Dienst passt nicht, mehrere Produkte am Markt, daher Auswahlprozess.', votum_013:'ja', ergebnis:'B'});
     weiter(1);
     erledigt('R15', {fb_15:q(5, 'ja'), stn_15:'Anmeldung muss über die zentrale Benutzerverwaltung laufen.\nKalenderschnittstelle nur über den freigegebenen Standard.', votum_15:'auflagen'});
     // 5 Auswahlprozess
@@ -869,7 +879,7 @@ async function actSample(){
   Object.assign(v.f, {fe_oe:'Fachbereich Soziales (Beispiel)', fe_kontakt:'Beispielperson', verantwortlich:'Beispielperson', nutzer:'Terminvergabe, ca. 12 Personen', fin:'nein', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung', ds_vor:{0:'unklar',1:'nein',2:'nein',3:'nein',4:'ja',5:'unklar'}, vorhaben:'Digitale Terminvergabe (Beispiel)',
     bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
     anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, Termine sind besser vorbereitet. Künftig bucht die Bürgerin selbst, die Sachbearbeitung sieht den Kalender.',
-    produkt_wunsch:'', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja', ko:{0:'ja',1:'unklar',2:'ja',3:'ja',4:'ja'}});
+    produkt_wunsch:'', online:'ja', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja', ko:{0:'ja',1:'unklar',2:'ja',3:'ja',4:'ja'}});
   log(v, 'FE', 'Antrag angelegt'); v.done.push('FE'); log(v, 'FE', 'Erledigt (Antrag abgesendet)'); transition(v);
   if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'all'; renderAll(); toast('Beispielvorgang angelegt; er liegt bei {R151}'); }
 }
@@ -1055,6 +1065,8 @@ const GLOSSAR = [
   ['Betriebsart','Wo und von wem die Software betrieben wird: auf eigenen Servern (On-Premise) oder beim Anbieter (SaaS).'],
   ['Modul','Ein zusätzlicher Baustein für eine Software, die schon im Einsatz ist.'],
   ['Portal Dritter','Eine Internetanwendung, die eine andere Stelle betreibt (z. B. Land oder Bund) und die Sie nur mitnutzen.'],
+  ['Onlinedienst (OZG)','Eine Verwaltungsleistung, die Bürgerinnen, Bürger oder Unternehmen selbst über das Internet nutzen. Das Onlinezugangsgesetz (OZG) verpflichtet die Verwaltung, solche Dienste anzubieten.'],
+  ['EfA (Einer für Alle)','Ein Land oder eine Kommune entwickelt einen Onlinedienst, alle anderen können ihn nachnutzen. EfA-First heißt: Erst prüfen, ob es so einen Dienst schon gibt, bevor man selbst etwas beschafft.'],
   ['Fachverfahren','Software für eine bestimmte Fachaufgabe, zum Beispiel für Wohngeld oder Kfz-Zulassung.'],
   ['Fachverfahrensverantwortliche Person','Die Person in Ihrer Einheit, die fachlich für die Software zuständig ist. Sie ist Ansprechperson für {R15}, entscheidet über Zugriffsrechte und begleitet Updates.'],
   ['Personenbezogene Daten','Alle Angaben, die sich auf einen bestimmten Menschen beziehen: Name, Adresse, Aktenzeichen einer Person, Daten von Beschäftigten.'],
