@@ -1,0 +1,9 @@
+{
+  "name": "laufkarte-softwareeinfuehrung",
+  "version": "0.1.0",
+  "description": "Prototyp der digitalen Laufkarte für Softwareeinführungen (Vorlage für FormCycle)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "UNLICENSED",
+  "private": true
+}

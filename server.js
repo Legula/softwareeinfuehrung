@@ -1,0 +1,113 @@
+// Laufkarte Softwareeinführung – kleiner Server ohne Abhängigkeiten
+// Liefert die Oberfläche aus und speichert die Vorgänge gemeinsam in einer JSON-Datei.
+'use strict';
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const PORT = parseInt(process.env.PORT || '8080', 10);
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'vorgaenge.json');
+const FB_FILE = path.join(DATA_DIR, 'feedback.json');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+// Optionaler Passwortschutz (HTTP Basic Auth); leer = kein Schutz
+const AUTH_USER = process.env.BASIC_AUTH_USER || '';
+const AUTH_PASS = process.env.BASIC_AUTH_PASS || '';
+// Optionale Test-Mailadresse für das Mail-Protokoll (wird nur angezeigt, es wird nichts verschickt)
+const TEST_MAIL = process.env.TEST_MAIL || '';
+const MAX_BODY = 512 * 1024; // max. 512 KB je Vorgang
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// Vorgänge im Speicher halten, bei jeder Änderung atomar auf die Platte schreiben
+let items = {};
+try { items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { items = {}; }
+let feedback = {};
+try { feedback = JSON.parse(fs.readFileSync(FB_FILE, 'utf8')); } catch (e) { feedback = {}; }
+let rev = Date.now();
+
+function persist(file, data) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.renameSync(tmp, file);
+  rev = Date.now();
+}
+
+// Zeitkonstanter Vergleich für Zugangsdaten
+function safeEqual(a, b) {
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+function authorized(req) {
+  if (!AUTH_USER) return true;
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Basic ')) return false;
+  const [u, ...p] = Buffer.from(h.slice(6), 'base64').toString('utf8').split(':');
+  return safeEqual(u, AUTH_USER) && safeEqual(p.join(':'), AUTH_PASS);
+}
+
+function send(res, code, body, type) {
+  res.writeHead(code, {
+    'Content-Type': type || 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer'
+  });
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', c => { size += c.length; if (size > MAX_BODY) { reject(new Error('zu groß')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+const ID_RE = /^[a-z0-9]{4,32}$/;
+
+const server = http.createServer(async (req, res) => {
+  if (!authorized(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Laufkarte", charset="UTF-8"' });
+    return res.end('Anmeldung erforderlich');
+  }
+  const url = new URL(req.url, 'http://localhost');
+
+  // Gesundheitsprüfung für Docker
+  if (url.pathname === '/healthz') return send(res, 200, { ok: true });
+
+  // API: Liste aller Vorgänge
+  if (url.pathname === '/api/vorgaenge' && req.method === 'GET') {
+    return send(res, 200, { rev, items, feedback, testmail: TEST_MAIL });
+  }
+  // API: einzelnen Vorgang speichern oder löschen
+  const m = url.pathname.match(/^\/api\/(vorgaenge|feedback)\/([^/]+)$/);
+  if (m) {
+    const isFb = m[1] === 'feedback', col = isFb ? feedback : items, file = isFb ? FB_FILE : DATA_FILE;
+    const id = m[2];
+    if (!ID_RE.test(id)) return send(res, 400, { error: 'ungültige ID' });
+    if (req.method === 'PUT') {
+      try {
+        const doc = JSON.parse(await readBody(req));
+        if (!doc || typeof doc !== 'object' || Array.isArray(doc) || doc.id !== id) return send(res, 400, { error: 'ungültiger Vorgang' });
+        col[id] = doc; persist(file, col);
+        return send(res, 200, { ok: true, rev });
+      } catch (e) { return send(res, 400, { error: 'ungültige Daten' }); }
+    }
+    if (req.method === 'DELETE') {
+      delete col[id]; persist(file, col);
+      return send(res, 200, { ok: true, rev });
+    }
+    return send(res, 405, { error: 'Methode nicht erlaubt' });
+  }
+
+  // Oberfläche ausliefern
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    return send(res, 200, fs.readFileSync(path.join(PUBLIC_DIR, 'index.html')), 'text/html; charset=utf-8');
+  }
+  send(res, 404, { error: 'nicht gefunden' });
+});
+
+server.listen(PORT, () => console.log(`Laufkarte läuft auf Port ${PORT}, Daten in ${DATA_FILE}${AUTH_USER ? ', Passwortschutz aktiv' : ''}`));

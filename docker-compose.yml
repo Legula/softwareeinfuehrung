@@ -1,0 +1,16 @@
+# Start: docker compose up -d   (Zugangsdaten in .env setzen, siehe .env.example)
+services:
+  laufkarte:
+    build: .
+    container_name: laufkarte
+    restart: unless-stopped
+    ports:
+      - "${LAUFKARTE_PORT:-8080}:8080"
+    environment:
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER:-}
+      - BASIC_AUTH_PASS=${BASIC_AUTH_PASS:-}
+      - TEST_MAIL=${TEST_MAIL:-}
+    volumes:
+      - laufkarte-daten:/data
+volumes:
+  laufkarte-daten:

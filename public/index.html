@@ -1,0 +1,958 @@
+<title>Laufkarte Softwareeinführung</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: Kopfleiste mit Rollenwahl, links Posteingang, rechts die Laufkarte des gewählten Vorgangs */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --surface-2:#eef2f3; --line:#d5dde0; --fg:#17262b; --muted:#56686e;
+  --accent:#0d6b73; --accent-soft:#dcefef; --on-accent:#ffffff;
+  --good:#2f7d3b; --good-soft:#e2f2e3; --warn:#9a6400; --warn-soft:#fbf0d8; --bad:#b3261e; --bad-soft:#fbe4e1;
+  --font-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111a1d; --surface:#182428; --surface-2:#1f2e33; --line:#30444a; --fg:#e4ecee; --muted:#9db0b5;
+  --accent:#4fb8bf; --accent-soft:#173b3f; --on-accent:#08221f;
+  --good:#7cc98a; --good-soft:#1d3523; --warn:#e5b45a; --warn-soft:#3a2e15; --bad:#f0897f; --bad-soft:#3d1f1c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111a1d; --surface:#182428; --surface-2:#1f2e33; --line:#30444a; --fg:#e4ecee; --muted:#9db0b5;
+  --accent:#4fb8bf; --accent-soft:#173b3f; --on-accent:#08221f;
+  --good:#7cc98a; --good-soft:#1d3523; --warn:#e5b45a; --warn-soft:#3a2e15; --bad:#f0897f; --bad-soft:#3d1f1c; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px;max-width:1280px;margin:0 auto}
+header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:1.35rem;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.85rem}
+.testbar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;background:var(--warn-soft);color:var(--fg);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;font-size:.85rem;margin-bottom:16px}
+.testbar b{color:var(--warn)}
+.rolepick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+label.lbl{font-weight:600;display:block;margin-bottom:2px}
+select,input[type=text],input[type=date],textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;max-width:100%}
+textarea{min-height:84px;resize:vertical}
+select:focus,input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rolepick select{width:auto;min-width:220px;font-weight:600}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:7px 14px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button.ghost{border-color:transparent;background:transparent;color:var(--accent);padding:4px 8px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.inbox{padding:12px}
+.inbox h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:4px 4px 8px}
+.filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.filters button{padding:4px 10px;font-size:.85rem}
+.filters button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--fg);font-weight:600}
+.item{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:8px;padding:10px;margin-bottom:6px;background:var(--surface-2)}
+.item[aria-current=true]{border-color:var(--accent);background:var(--accent-soft)}
+.item .nr{font-family:var(--font-mono);font-size:.78rem;color:var(--muted)}
+.item .t{font-weight:600;display:block;margin:2px 0}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:.72rem;padding:1px 7px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.chip.me{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.chip.late{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.chip.ok{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+.newbtns{display:grid;gap:6px;margin-top:10px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.empty h3{color:var(--fg);margin:0 0 6px}
+.card{padding:18px 20px}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px}
+.head .nr{font-family:var(--font-mono);color:var(--muted);font-size:.85rem}
+.head h2{margin:2px 0 4px;font-size:1.25rem;text-wrap:balance}
+.where{font-size:.9rem}
+.where b{color:var(--accent)}
+.route{display:flex;gap:0;overflow-x:auto;margin:16px 0 4px;padding-bottom:4px}
+.stop{flex:1 0 88px;position:relative;padding:22px 6px 0;text-align:center;font-size:.78rem;color:var(--muted)}
+.stop::before{content:"";position:absolute;top:8px;left:0;right:0;height:2px;background:var(--line)}
+.stop:first-child::before{left:50%}.stop:last-child::before{right:50%}
+.stop i{position:absolute;top:1px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--surface);border:2px solid var(--line)}
+.stop.done i{background:var(--good);border-color:var(--good)}
+.stop.now i{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.stop.now{color:var(--fg);font-weight:600}
+.stop.end i{background:var(--bad);border-color:var(--bad)}
+.stop span{display:block}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:14px 0 0;overflow-x:auto}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:8px 12px;color:var(--muted);white-space:nowrap}
+.tabs button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.banner{border-radius:8px;padding:12px 14px;margin:14px 0;border:1px solid}
+.banner.info{background:var(--accent-soft);border-color:var(--accent)}
+.banner.warn{background:var(--warn-soft);border-color:var(--warn)}
+.banner.bad{background:var(--bad-soft);border-color:var(--bad)}
+.banner.good{background:var(--good-soft);border-color:var(--good)}
+.banner h4{margin:0 0 4px;font-size:.95rem}
+.sec{border:1px solid var(--line);border-radius:10px;margin-top:14px;overflow:hidden}
+.sec.mine{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.sec > summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface-2)}
+.sec > summary::-webkit-details-marker{display:none}
+.sec > summary h3{margin:0;font-size:1rem}
+.sec > summary .oe{font-size:.78rem;color:var(--muted)}
+.secbody{padding:12px 14px 16px;display:grid;gap:14px}
+.intro{font-size:.88rem;color:var(--muted);border-left:3px solid var(--accent);padding-left:10px}
+.owner{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
+.fld .help{font-size:.82rem;color:var(--muted);margin:0 0 4px}
+.fld .req{color:var(--bad);margin-left:2px}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px}
+.opts label{display:flex;gap:6px;align-items:flex-start;font-weight:400}
+.opts.col{flex-direction:column}
+.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+@media (max-width:560px){.qrow{grid-template-columns:minmax(0,1fr)}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg label{padding:3px 10px;font-size:.82rem;cursor:pointer;border-right:1px solid var(--line);display:flex;align-items:center;gap:4px}
+.seg label:last-child{border-right:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--accent);color:var(--on-accent);font-weight:600}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent)}
+.ro{background:var(--surface-2);border-radius:6px;padding:6px 9px;white-space:pre-wrap;min-height:34px}
+.ro.empty{color:var(--muted);font-style:italic}
+.callout{font-size:.88rem;border-radius:6px;padding:8px 10px;background:var(--accent-soft)}
+.callout.warn{background:var(--warn-soft)}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.crow .ctl{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.crow .ctl input[type=date]{width:auto}
+.crow .ctl input[type=file]{max-width:220px;font-size:.8rem}
+@media (max-width:640px){.crow{grid-template-columns:minmax(0,1fr)}}
+.rep{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:6px;margin-bottom:6px}
+@media (max-width:560px){.rep{grid-template-columns:minmax(0,1fr)}}
+.actions{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);margin:18px -20px -18px;padding:12px 20px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-radius:0 0 10px 10px}
+.actions .sp{flex:1}
+.errs{color:var(--bad);font-size:.88rem;margin:10px 0 0;padding-left:18px}
+.inline{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;display:grid;gap:8px;background:var(--surface-2)}
+table.log{width:100%;border-collapse:collapse;font-size:.88rem}
+table.log th,table.log td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+.tw{overflow-x:auto;margin-top:12px}
+.mail{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
+.mail .meta{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+.mail .subj{font-weight:600;margin:4px 0}
+.mail pre{white-space:pre-wrap;font-family:var(--font-body);font-size:.85rem;margin:6px 0 0;color:var(--muted)}
+.drawer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;z-index:15;padding:16px;display:grid;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.drawer h3{margin:0;font-size:1.05rem}
+.fbitem{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px}
+.fbitem.done{opacity:.65}
+.fbitem .txt{white-space:pre-wrap;margin:6px 0}
+.fbitem .row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.fbitem select{width:auto;padding:3px 6px;font-size:.85rem}
+.secfb{font-size:.78rem;padding:2px 8px}
+.sumright{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.num{font-variant-numeric:tabular-nums}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.9rem;z-index:20;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion:no-preference){.item,.sec{transition:border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Laufkarte Softwareeinführung</h1>
+      <div class="sub">Klickbarer Prototyp als Vorlage für das FormCycle-Formular</div>
+    </div>
+    <div class="rolepick">
+      <label for="role" class="lbl" style="margin:0">Ansicht als</label>
+      <select id="role"></select>
+      <button type="button" class="primary" id="fbopen">Feedback geben</button>
+      <button type="button" id="fblist">Feedback-Liste (<span id="fbcount">0</span>)</button>
+    </div>
+  </header>
+  <div class="testbar" role="note">
+    <span><b>Testmodus</b> · Alle Mails gehen an <span id="testmail"></span></span>
+    <button class="ghost" id="copymail" type="button">Adresse kopieren</button>
+    <span id="storeinfo" class="sub"></span>
+  </div>
+  <div class="grid">
+    <aside class="panel inbox" aria-label="Posteingang">
+      <h2>Vorgänge</h2>
+      <div class="filters" role="group" aria-label="Filter">
+        <button type="button" data-filter="me" aria-pressed="true">Bei mir</button>
+        <button type="button" data-filter="all" aria-pressed="false">Alle</button>
+        <button type="button" data-filter="done" aria-pressed="false">Abgeschlossen</button>
+      </div>
+      <div id="list"></div>
+      <div class="newbtns" id="newbtns"></div>
+    </aside>
+    <main class="panel card" id="main" aria-live="polite"></main>
+  </div>
+</div>
+<div class="drawer panel" id="fbdrawer" hidden role="dialog" aria-label="Feedback geben">
+  <h3>Feedback geben</h3>
+  <p class="sub" style="margin:0">Was fehlt, was ist unklar, was sollte anders laufen? Jede Rückmeldung landet anonym in der gemeinsamen Feedback-Liste. Bitte keine Namen nennen.</p>
+  <div><label class="lbl" for="fb_art">Art</label><select id="fb_art"><option value="Verbesserung">Verbesserungsvorschlag</option><option value="Fehler">Fehler oder Unstimmigkeit</option><option value="Frage">Frage</option><option value="Lob">Passt so</option></select></div>
+  <div><label class="lbl" for="fb_bezug">Bezug</label><select id="fb_bezug"></select></div>
+  <div><label class="lbl" for="fb_text">Ihre Rückmeldung</label><textarea id="fb_text"></textarea><p class="errs" id="fb_err" style="padding:0" hidden>Bitte einen Text eingeben.</p></div>
+  <div style="display:flex;gap:8px"><button type="button" class="primary" id="fb_send">Feedback speichern</button><button type="button" id="fb_cancel">Abbrechen</button></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// ===== Konfiguration =====
+let TESTMAIL = 'testpostfach@example.org'; // Platzhalter; im Serverbetrieb über die Umgebungsvariable TEST_MAIL setzbar (im Echtbetrieb je OE eine Variable)
+const FRIST_TAGE = 10;                       // Arbeitstage je Station
+const ROLES = {FE:'Antragsteller', R151:'15/1', R013:'01/3', R15:'15', R112:'11/2', DSB:'DSB', ISB:'ISB', PR:'PR (nur lesen)', R141:'14/1 (nur lesen)'};
+const SHORT = {FE:'Antragsteller', R151:'15/1', R013:'01/3', R15:'15', R112:'11/2', DSB:'DSB', ISB:'ISB', PR:'PR', R141:'14/1', KAT:'Softwarekataster'};
+const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
+
+// Status: Bezeichnung und welche Stationen gleichzeitig zuständig sind
+const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', V3:'Bereitstellung', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahme', N3:'Organisation und PR', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Abgeschlossen, eingeführt'};
+const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], V3:['R15'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB'], N3:['R112'], N4:['FE'], S90:[], S99:[]};
+const FINAL = s => s === 'S90' || s === 'S99';
+
+const JNU = [['ja','Ja'],['nein','Nein'],['unklar','Unklar']];
+const VOTUM = [['ja','Zugestimmt'],['auflagen','Unter Auflagen'],['nein','Nicht zugestimmt']];
+const VOTUM_B = [['ja','Befürwortet'],['auflagen','Mit Auflagen'],['nein','Nicht befürwortet']];
+const has = (a, x) => Array.isArray(a) && a.includes(x);
+
+// ===== Abschnitte =====
+const SECS = [
+  {n:1, title:'Bedarfsmeldung', oe:'Antragsteller', when:()=>true,
+   intro:'Beschreiben Sie kurz, was Sie brauchen und warum. Ausfüllzeit etwa 10 Minuten. Beschaffung, Haushaltsmittel und Vergabe klären Sie bitte parallel wie gewohnt (bei Bedarf mit 20 und der Vergabestelle).'},
+  {n:2, title:'Einordnung und KO-Kriterien', oe:'Antragsteller', when:()=>true,
+   intro:'Diese Angaben entscheiden, welche Stellen beteiligt werden. Wenn Sie unsicher sind, wählen Sie „Unklar“. Das ist kein Nachteil; die Digitalisierung klärt es mit Ihnen.'},
+  {n:3, title:'Prüfung vorhandene Lösung', oe:'15/1', when:v=>v.status!=='S0',
+   intro:'Gibt es im Kreis schon eine Lösung, die den Bedarf deckt und sofort nutzbar ist? Ihre Entscheidung legt den weiteren Weg fest.'},
+  {n:4, title:'Fortschreibung Neueinführung', oe:'01/3 und 15', when:v=>has(v.reached,'N1'),
+   intro:'01/3 und 15 bearbeiten ihre Teile parallel, gern gemeinsam mit dem Antragsteller. Die Stellungnahmen werden Bestandteil des Beschaffungsvorgangs.'},
+  {n:5, title:'Auswahlprozess', oe:'Antragsteller', when:v=>has(v.reached,'B1'),
+   intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz.'},
+  {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'DSB und ISB', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
+   intro:'DSB und ISB arbeiten parallel. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
+  {n:7, title:'Organisation und Personalrat', oe:'11/2', when:v=>has(v.reached,'V12')||has(v.reached,'N3'),
+   intro:'Prüfung organisatorischer Auswirkungen und Steuerung der PR-Beteiligung nach BGA ADV.'},
+  {n:8, title:'Klärung nach Ablehnung', oe:'Antragsteller', when:v=>has(v.reached,'N4'),
+   intro:'DSB oder ISB haben nicht zugestimmt. Klären Sie die offenen Punkte, legen Sie den Antrag überarbeitet erneut vor, holen Sie eine Entscheidung des KD ein oder ziehen Sie ihn zurück.'},
+  {n:9, title:'Zustimmungen und Zulassungen Dritter', oe:'Antragsteller pflegt, 15 prüft vor Bereitstellung', when:v=>v.status!=='S0',
+   intro:'Hier haken Sie Zustimmungen und Zulassungen ab, die außerhalb dieser Laufkarte erteilt werden. Pflichtpunkte ergeben sich automatisch aus Ihren Angaben und den Stellungnahmen. Sie können den Abschnitt jederzeit pflegen, unabhängig davon, wo die Laufkarte gerade liegt. 15 kann die Bereitstellung erst bestätigen, wenn alle Pflichtpunkte erledigt sind.'},
+  {n:10, title:'Bereitstellung und Kataster', oe:'15', when:v=>has(v.reached,'V3'),
+   intro:'Bereitstellung der Software und Aufnahme in das Softwarekataster.'}
+];
+
+// ===== Felder =====
+// own = bearbeitende Rolle, st = Status, in denen das Feld bearbeitet wird, show = Sichtbarkeitsbedingung
+const FIELDS = [
+  // Abschnitt 1
+  {id:'fe_oe', sec:1, own:'FE', st:['S0'], t:'text', l:'Organisationseinheit', req:1, h:'Im Echtbetrieb aus dem Login vorbelegt.'},
+  {id:'fe_kontakt', sec:1, own:'FE', st:['S0'], t:'text', l:'Ansprechperson', req:1},
+  {id:'vorhaben', sec:1, own:'FE', st:['S0'], t:'text', l:'Bezeichnung des Vorhabens', req:1, h:'Kurz und sprechend, z. B. „Digitale Terminvergabe Kfz-Zulassung“.'},
+  {id:'bedarf', sec:1, own:'FE', st:['S0'], t:'textarea', l:'Kurzbeschreibung des Bedarfs', req:1},
+  {id:'anlass', sec:1, own:'FE', st:['S0'], t:'radio', l:'Anlass', req:1, opts:[['verbesserung','Verbesserung eines bestehenden Ablaufs'],['vorgabe','Vorgabe von Land oder Bund'],['neu','Neue Aufgabe']], col:1,
+   h:'Software wird nur eingeführt, wenn sie etwas verbessert oder vorgeschrieben ist.'},
+  {id:'vorgabe', sec:1, own:'FE', st:['S0'], t:'text', l:'Vorgabe bzw. Rechtsgrundlage', req:1, show:f=>f.anlass==='vorgabe'},
+  {id:'verbesserung', sec:1, own:'FE', st:['S0'], t:'textarea', l:'Was verbessert sich, was ändert sich im Ablauf?', req:1,
+   h:'Was wird schneller, einfacher, sicherer oder günstiger? Wie läuft es heute, wie künftig? Zwei bis fünf Sätze reichen.'},
+  {id:'vza', sec:1, own:'FE', st:['S0'], t:'text', l:'Geschätzte Einsparung an Personalaufwand (VZÄ pro Jahr)', req:1, show:f=>f.anlass!=='neu',
+   h:'Grobe Schätzung reicht, z. B. 0,3. Faustregel: Fälle pro Jahr × eingesparte Minuten je Fall ÷ ca. 100.000 Minuten je VZÄ. Keine Einsparung: 0 eintragen.'},
+  {id:'vza_grundlage', sec:1, own:'FE', st:['S0'], t:'text', l:'Grundlage der Schätzung (optional)', show:f=>f.anlass!=='neu'&&f.vza&&f.vza.trim()!=='0',
+   h:'Z. B. „4.000 Termine × 15 Minuten“.'},
+  {id:'vza_verwendung', sec:1, own:'FE', st:['S0'], t:'radio', l:'Wofür wird die freiwerdende Kapazität genutzt? (optional)', col:1, show:f=>f.anlass!=='neu'&&f.vza&&f.vza.trim()!=='0',
+   opts:[['entlastung','Entlastung bei steigenden Fallzahlen oder Rückständen'],['umschichtung','Umschichtung in andere Aufgaben'],['einsparung','Stelleneinsparung möglich'],['offen','Noch offen']]},
+  {id:'anf_katalog', sec:1, own:'FE', st:['S0'], t:'file', l:'Anforderungskatalog (optional)'},
+  {id:'produkt_wunsch', sec:1, own:'FE', st:['S0'], t:'text', l:'Produkt, falls schon bekannt (optional)', h:'Beschleunigt die Prüfung, ist aber keine Vorentscheidung.'},
+  {id:'verantwortlich', sec:1, own:'FE', st:['S0'], t:'text', l:'Fachverfahrensverantwortliche Person', req:1, h:'Ist nach der Einführung zuständig für Pflege, Berechtigungen und die regelmäßige Prüfung, ob die Software noch passt. Wird ins Softwarekataster übernommen.'},
+  {id:'nutzer', sec:1, own:'FE', st:['S0'], t:'text', l:'Wer nutzt die Software, wie viele Personen etwa?', req:1, h:'Z. B. „Sachbearbeitung 50/2, ca. 15 Personen“.'},
+  {id:'termin', sec:1, own:'FE', st:['S0'], t:'date', l:'Gewünschter Einsatztermin (optional)'},
+  // Abschnitt 2
+  {id:'art', sec:2, own:'FE', st:['S0'], t:'checks', l:'Art des Vorhabens', req:1, col:1,
+   opts:[['saas','SaaS: Software läuft beim Anbieter im Internet'],['onprem','On-Premise: Software läuft im Rechenzentrum des Kreises'],['schnittstelle','Schnittstelle zu einem anderen Programm'],['betriebsart','Änderung der Betriebsart (z. B. On-Premise zu SaaS)'],['modul','Neues Modul einer vorhandenen Software'],['portal','Nutzung eines Portals Dritter'],['hardware','Reine Hardware']],
+   h:'Mehrfachauswahl möglich.'},
+  {id:'hw_hinweis', sec:2, t:'info', kind:'warn', l:'Reine Hardware läuft über das Hardware-Formular. Dieser Antrag kann so nicht abgesendet werden.', show:f=>Array.isArray(f.art)&&f.art.length===1&&f.art[0]==='hardware'},
+  {id:'schnittstelle', sec:2, own:'FE', st:['S0'], t:'textarea', l:'Betroffene Systeme und Folgeabschätzung', req:1, show:f=>has(f.art,'schnittstelle'),
+   h:'Welche Programme sind betroffen, welche Daten fließen in welche Richtung, was passiert bei Ausfall?'},
+  {id:'betriebsart_alt', sec:2, own:'FE', st:['S0'], t:'text', l:'Bisherige Software und Betriebsart', req:1, show:f=>has(f.art,'betriebsart')||has(f.art,'modul'), h:'Im Echtbetrieb Auswahl aus dem Softwarekataster.'},
+  {id:'portal', sec:2, own:'FE', st:['S0'], t:'text', l:'Portal und Betreiber', req:1, show:f=>has(f.art,'portal')},
+  {id:'pbd', sec:2, own:'FE', st:['S0'], t:'radio', l:'Werden personenbezogene Daten verarbeitet?', req:1, opts:JNU,
+   h:'Ja, sobald Namen, Adressen, personenbezogene Aktenzeichen oder Daten von Beschäftigten verarbeitet werden.'},
+  {id:'ds_vor', sec:2, own:'FE', st:['S0'], t:'q', l:'Datenschutz-Vorprüfung', req:1, show:f=>f.pbd&&f.pbd!=='nein', answers:[['ja','Ja'],['nein','Nein'],['unklar','Weiß nicht']],
+   items:['Daten werden außerhalb der EU/des EWR verarbeitet','Besondere Kategorien (z. B. Gesundheit, Sozialdaten)','Schutzbedürftige Personen betroffen (z. B. Kinder)','Automatisierte Entscheidungen oder Profiling','Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich','Hersteller oder Dienstleister stellt eine Datenschutz-Folgenabschätzung bereit'],
+   h:'Hilft DSB und PR, früh einzuschätzen, ob eine Folgenabschätzung oder Zustimmung nötig ist. „Weiß nicht“ ist ausdrücklich erlaubt.'},
+  {id:'fin', sec:2, own:'FE', st:['S0'], t:'radio', l:'Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:JNU,
+   h:'Dann prüft die Rechnungsprüfung (14/1) das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der GPA NRW.'},
+  {id:'ko', sec:2, own:'FE', st:['S0'], t:'q', l:'KO-Kriterien', req:1, answers:[['ja','Erfüllt'],['unklar','Unklar'],['nein','Nicht erfüllt']],
+   items:['Kein Verstoß gegen Innenrecht (z. B. Dienstanweisungen zu IT und TUI)','Kein Parallelprodukt zu einer im Kreis eingesetzten Lösung, soweit bekannt (One-Product-Strategie)','Bei personenbezogenen Daten: Verarbeitung in EU/EWR, Auftragsverarbeitungsvertrag möglich','Rollen- und Rechtekonzept sowie Protokollierung vorhanden','Barrierefreiheit nach BITV NRW, sofern relevant'],
+   h:'„Nicht erfüllt“ sperrt das Absenden. „Unklar“ ist erlaubt und wird von 01/3 und 15/1 geklärt. Platzhalter, bis die Fachlichkeiten die finale Liste liefern.'},
+  // Abschnitt 3
+  {id:'chk_151', sec:3, own:'R151', st:['S1'], t:'checks', l:'Prüfschritte', req:'all', col:1, opts:[['kataster','Softwarekataster auf vorhandene Lösungen geprüft'],['lizenz','Lizenzlage geprüft'],['strategie','Abgleich mit der IT-Strategie erfolgt']]},
+  {id:'strategie', sec:3, own:'R151', st:['S1'], t:'radio', l:'Passt das Vorhaben zur IT-Strategie?', req:1, opts:[['ja','Ja'],['nein','Nein, Ablehnung']]},
+  {id:'strategie_begr', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Begründung der Ablehnung', req:1, show:f=>f.strategie==='nein'},
+  {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja',
+   opts:[['vorhanden','Vorhandene Software ist unmittelbar nutzbar (Lizenzen vorhanden)'],['neu','Neueinführung erforderlich']]},
+  {id:'sw_vorhanden', sec:3, own:'R151', st:['S1'], t:'text', l:'Vorhandene Software', req:1, show:f=>f.verfahren==='vorhanden'&&f.strategie==='ja'},
+  {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
+  // Abschnitt 4: 01/3
+  {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU,
+   items:['Ist-Prozess ist beschrieben','Medienbrüche werden reduziert','Anbindung an E-Akte oder Fachverfahren nötig','Onlinezugang (OZG) betroffen','Nutzen ist messbar beschrieben']},
+  {id:'stn_013', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Stellungnahme 01/3', req:1},
+  {id:'votum_013', sec:4, own:'R013', st:['N1'], t:'radio', l:'Votum 01/3', req:1, opts:VOTUM_B},
+  {id:'ergebnis', sec:4, own:'R013', st:['N1'], t:'radio', l:'Ergebnis der Marktsicht', req:1, col:1,
+   opts:[['A','A: Fachlich kommt nur eine Software in Frage'],['B','B: Mehrere Produkte kommen in Frage, Antragsteller führt Auswahl durch']],
+   h:'Bei B beteiligt der Antragsteller die Stellen im Auswahlprozess selbst; danach folgt die abschließende Stellungnahme von DSB und ISB.'},
+  {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software', req:1, show:f=>f.ergebnis==='A'},
+  {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle.', show:f=>f.ergebnis==='A'},
+  {id:'gonrw', sec:4, own:'R013', st:['N1'], t:'check', l:'Prüfungspflichtig durch 14/1 (GO NRW, DA TUI)', h:'Vorlage nennt § 102 GO NRW; die Programmprüfung steht nach aktueller Fassung in § 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen). 14/1 wird automatisch informiert. Bei „finanzrelevant: Ja“ der FE vorbelegt.'},
+  // Abschnitt 4: 15
+  {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU,
+   items:['Betriebsart ist geklärt','Anmeldung über zentrale Benutzerverwaltung möglich','Schnittstellen sind beschrieben','Datensicherung und Wiederherstellung geregelt','Arbeitsplatz-Anforderungen erfüllt']},
+  {id:'stn_15', sec:4, own:'R15', st:['N1'], t:'textarea', l:'Stellungnahme 15', req:1},
+  {id:'votum_15', sec:4, own:'R15', st:['N1'], t:'radio', l:'Votum 15', req:1, opts:VOTUM_B},
+  {id:'anlage_15', sec:4, own:'R15', st:['N1'], t:'file', l:'Anlage (optional)'},
+  // Abschnitt 5
+  {id:'bet', sec:5, own:'FE', st:['B1'], t:'q', l:'Beteiligung je Stelle', req:1, answers:[['ja','Erfolgt'],['nein','Nicht erforderlich']],
+   items:['01/3 Digitalisierung','15 IT','11/2 Organisation','Personalrat','Datenschutz (DSB)','IT-Sicherheit (ISB)'],
+   h:'„Erfolgt“, wenn die Stelle informiert oder angehört wurde.'},
+  {id:'bet_begr', sec:5, own:'FE', st:['B1'], t:'textarea', l:'Begründung für „nicht erforderlich“', req:1, show:f=>f.bet&&Object.values(f.bet).includes('nein')},
+  {id:'produkte', sec:5, own:'FE', st:['B1'], t:'repeat', l:'Geprüfte Produkte und Ergebnis', req:1, min:2, h:'Mindestens zwei Produkte, je ein Satz zum Ergebnis.'},
+  {id:'produkt_b', sec:5, own:'FE', st:['B1'], t:'text', l:'Ausgewählte Software', req:1},
+  {id:'vergabe_b', sec:5, t:'info', l:'Hinweis: Die Vergabe klären Sie bitte parallel mit der Vergabestelle.'},
+  {id:'doku_b', sec:5, own:'FE', st:['B1'], t:'file', l:'Weitere Dokumentation (optional)'},
+  // Abschnitt 6: DSB
+  {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU,
+   items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 DSG NRW)','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich']},
+  {id:'votum_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'radio', l:'Votum DSB', req:1, opts:VOTUM},
+  {id:'auflagen_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Auflagen DSB', req:1, show:f=>f.votum_dsb==='auflagen', h:'Eine Auflage je Zeile.'},
+  {id:'empf_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung DSB', req:1, show:f=>f.votum_dsb==='nein'},
+  {id:'anlage_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'file', l:'Stellungnahme als Anlage (optional)'},
+  // Abschnitt 6: ISB
+  {id:'chk_isb', sec:6, own:'ISB', st:['V12','N2'], t:'q', l:'Prüfpunkte IT-Sicherheit', req:1, answers:JNU,
+   items:['Schutzbedarf ist ermittelt','Bereichskonzept durch den Antragsteller erforderlich','Bei SaaS: Anbieter weist Sicherheitsnachweis vor (z. B. BSI C5, ISO 27001)','Notfall- und Wiederanlaufregelung vorhanden']},
+  {id:'votum_isb', sec:6, own:'ISB', st:['V12','N2'], t:'radio', l:'Votum ISB', req:1, opts:VOTUM},
+  {id:'auflagen_isb', sec:6, own:'ISB', st:['V12','N2'], t:'textarea', l:'Auflagen ISB', req:1, show:f=>f.votum_isb==='auflagen', h:'Eine Auflage je Zeile.'},
+  {id:'empf_isb', sec:6, own:'ISB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung ISB', req:1, show:f=>f.votum_isb==='nein'},
+  {id:'anlage_isb', sec:6, own:'ISB', st:['V12','N2'], t:'file', l:'Stellungnahme als Anlage (optional)'},
+  // Abschnitt 7
+  {id:'org_auswirk', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
+  {id:'stn_112', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Stellungnahme 11/2', req:1, show:f=>f.org_auswirk==='ja'},
+  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Art der PR-Beteiligung', req:1, col:1,
+   opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach BGA ADV erforderlich']],
+   h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit dem PR abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
+  {id:'pr_datum', sec:7, own:'R112', st:['V12','N3'], t:'date', l:'PR-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
+  // Abschnitt 8
+  {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, opts:[['erneut','Überarbeitet erneut DSB und ISB vorlegen'],['kd','Entscheidung des KD einholen'],['zurueck','Antrag zurückziehen']]},
+  {id:'klaerung_doku', sec:8, own:'FE', st:['N4'], t:'textarea', l:'Dokumentation der Klärung', req:1},
+  {id:'kd_entscheidung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Entscheidung des KD', req:1, opts:[['freigabe','Freigabe'],['ablehnung','Ablehnung']], show:f=>f.klaerung==='kd'},
+  {id:'kd_vermerk', sec:8, own:'FE', st:['N4'], t:'file', l:'Vermerk KD (optional)', show:f=>f.klaerung==='kd'},
+  // Abschnitt 9: Zustimmungen Dritter (begleitend, nicht an eine Station gebunden)
+  {id:'zust', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'consent', l:'Zustimmungen und Zulassungen'},
+  {id:'zust_weitere', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'repeat', rows:1, ph:['Weitere Zustimmung (z. B. Fachaufsicht)','Erteilt am / Aktenzeichen'], l:'Weitere Zustimmungen (optional)'},
+  // Abschnitt 10
+  {id:'bereitstellung', sec:10, own:'R15', st:['V3'], t:'radio', l:'Bereitstellung durch', req:1, col:1, opts:[['15','15 IT'],['saas','SaaS-Anbieter (Zugang eingerichtet)'],['entfaellt','Entfällt (Portalnutzung Dritter)']]},
+  {id:'bereit_am', sec:10, own:'R15', st:['V3'], t:'date', l:'Bereitgestellt am', req:1},
+  {id:'kataster', sec:10, own:'R15', st:['V3'], t:'check', l:'In das Softwarekataster aufgenommen', req:1},
+  {id:'kataster_id', sec:10, own:'R15', st:['V3'], t:'text', l:'Kataster-Nummer (optional)'}
+];
+
+// ===== Hilfsfunktionen =====
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const nowIso = () => new Date().toISOString();
+const fmt = iso => iso ? new Date(iso).toLocaleDateString('de-DE') : '';
+const fmtT = iso => iso ? new Date(iso).toLocaleString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+const fmtDateStr = d => d ? d.split('-').reverse().join('.') : '';
+function addWorkdays(iso, n){ // Arbeitstage ohne Wochenenden (Feiertage im Prototyp nicht berücksichtigt)
+  const d = new Date(iso); let c = 0;
+  while (c < n){ d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) c++; }
+  return d.toISOString();
+}
+const daysSince = iso => Math.floor((Date.now() - new Date(iso)) / 864e5);
+const rid = () => Math.random().toString(36).slice(2, 10);
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
+
+// ===== Speicher: geteilte Datenbank, sonst lokal im Browser =====
+const state = {fb:{}, view:'karte', items:{}, role: lsGet('lk_role') || 'FE', sel: null, filter: 'me', tab: 'karte', drafts:{}, ui:{}, readonly:false, mode:'lokal'};
+const store = {
+  db: null, api: false, rev: 0,
+  async init(){
+    // 1. Eigener Server (Docker-Betrieb): gemeinsame Speicherung über die API
+    try {
+      const r = await fetch('api/vorgaenge', {cache:'no-store'});
+      if (r.ok && (r.headers.get('content-type') || '').includes('json')){
+        const d = await r.json(); this.api = true; this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; state.mode = 'server';
+        if (d.testmail){ TESTMAIL = d.testmail; $('#testmail').textContent = TESTMAIL; }
+        $('#storeinfo').textContent = 'Vorgänge werden auf dem Server gespeichert und sind für alle Testenden sichtbar.';
+        renderAll();
+        setInterval(() => this.poll(), 5000); // Änderungen anderer Testender alle 5 Sekunden abholen
+        return;
+      }
+    } catch(e){}
+    // 2. Geteilte Datenbank im Claude-Artifact, 3. sonst lokal im Browser
+    try { if (window.claude?.use) this.db = await window.claude.use('db'); } catch(e){ this.db = null; }
+    if (this.db){
+      state.mode = 'geteilt';
+      const t = setTimeout(() => { $('#storeinfo').textContent = 'Daten noch nicht erreichbar, bitte kurz warten.'; }, 10000);
+      this.db.collection('vorgaenge').onSnapshot(snap => {
+        if (!snap.metadata.fromCache) clearTimeout(t);
+        const items = {}; snap.docs.forEach(d => { if (d.exists) items[d.id] = d.data(); });
+        state.items = items; renderSoft();
+      }, err => { clearTimeout(t); $('#storeinfo').textContent = 'Geteilte Daten nicht verfügbar (' + err.code + ').'; });
+      this.db.collection('feedback').onSnapshot(snap => {
+        const fb = {}; snap.docs.forEach(d => { if (d.exists) fb[d.id] = d.data(); });
+        state.fb = fb; renderSoft();
+      }, () => {});
+    } else {
+      state.mode = 'lokal';
+      try { state.items = JSON.parse(lsGet('lk_items') || '{}'); } catch(e){ state.items = {}; }
+      try { state.fb = JSON.parse(lsGet('lk_fb') || '{}'); } catch(e){ state.fb = {}; }
+    }
+    $('#storeinfo').textContent = state.mode === 'geteilt' ? 'Vorgänge sind für alle Testenden sichtbar.' : 'Vorgänge werden nur in diesem Browser gespeichert.';
+    renderAll();
+  },
+  async poll(){
+    try {
+      const r = await fetch('api/vorgaenge', {cache:'no-store'}); if (!r.ok) return;
+      const d = await r.json(); if (d.rev === this.rev) return;
+      this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; renderSoft();
+    } catch(e){}
+  },
+  async save(v){
+    if (this.api){
+      try {
+        const r = await fetch('api/vorgaenge/' + encodeURIComponent(v.id), {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(v)});
+        if (!r.ok) throw new Error(r.status);
+        this.rev = (await r.json()).rev; state.items[v.id] = clone(v); renderAll(); return true;
+      } catch(e){ toast('Speichern fehlgeschlagen. Bitte erneut versuchen.'); return false; }
+    }
+    if (this.db){
+      try { await this.db.collection('vorgaenge').doc(v.id).set(clone(v)); return true; }
+      catch(e){
+        if (e && e.code === 'invalid_argument'){ state.readonly = true; toast('Sie haben für diesen Prototyp nur Leserechte.'); }
+        else toast('Speichern fehlgeschlagen. Bitte erneut versuchen.');
+        return false;
+      }
+    }
+    state.items[v.id] = clone(v); lsSet('lk_items', JSON.stringify(state.items)); renderAll(); return true;
+  },
+  // Feedback speichern (x = null löscht den Eintrag)
+  async saveFb(id, x){
+    if (this.api){
+      try {
+        const r = await fetch('api/feedback/' + encodeURIComponent(id), x ? {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(x)} : {method:'DELETE'});
+        if (!r.ok) throw new Error(r.status); this.rev = (await r.json()).rev;
+      } catch(e){ toast('Speichern fehlgeschlagen. Bitte erneut versuchen.'); return false; }
+    } else if (this.db){
+      try { const ref = this.db.collection('feedback').doc(id); if (x) await ref.set(clone(x)); else await ref.delete(); return true; }
+      catch(e){ toast(e && e.code === 'invalid_argument' ? 'Sie haben hier nur Leserechte.' : 'Speichern fehlgeschlagen.'); return false; }
+    }
+    if (x) state.fb[id] = clone(x); else delete state.fb[id];
+    if (!this.api) lsSet('lk_fb', JSON.stringify(state.fb));
+    renderAll(); return true;
+  },
+  async del(id){
+    if (this.api){ try { const r = await fetch('api/vorgaenge/' + encodeURIComponent(id), {method:'DELETE'}); this.rev = (await r.json()).rev; delete state.items[id]; renderAll(); } catch(e){ toast('Löschen fehlgeschlagen.'); } return; }
+    if (this.db){ try { await this.db.collection('vorgaenge').doc(id).delete(); } catch(e){ toast('Löschen fehlgeschlagen.'); } return; }
+    delete state.items[id]; lsSet('lk_items', JSON.stringify(state.items)); renderAll();
+  }
+};
+
+// ===== Workflow-Logik =====
+function mail(v, ziel, aufgabe, text){
+  const vh = v.f.vorhaben || 'Ohne Titel';
+  v.mails.push({ts: nowIso(), an: TESTMAIL, ziel: SHORT[ziel] || ziel, betreff: `[TEST → ${SHORT[ziel] || ziel}] ${v.nr} ${vh}: ${aufgabe}`,
+    text: `Guten Tag,\n\nder Vorgang ${v.nr} „${vh}“ der ${v.f.fe_oe || 'Antragsteller'} ${text || 'liegt jetzt bei Ihnen.'}\nIhre Aufgabe: ${aufgabe}\n${FINAL(v.status) ? '' : 'Bitte bis: ' + fmt(v.frist) + '\n'}\nZum Vorgang: (Link zum Formular)\nBisheriger Verlauf: siehe Laufzettel im Formular.\n\nDiese Nachricht wurde automatisch erzeugt.`});
+}
+function log(v, rolle, aktion, kommentar){ v.log.push({ts: nowIso(), rolle, aktion, kommentar: kommentar || ''}); }
+function enter(v, st){
+  v.status = st; v.open = OPEN[st].slice(); v.done = []; v.since = nowIso(); v.frist = addWorkdays(v.since, FRIST_TAGE);
+  if (!v.reached.includes(st)) v.reached.push(st);
+}
+function worstVotum(f){
+  const vs = [f.votum_dsb, f.votum_isb];
+  return vs.includes('nein') ? 'nein' : vs.includes('auflagen') ? 'auflagen' : 'ja';
+}
+function auflagenListe(f){
+  const out = [];
+  [['DSB', f.votum_dsb === 'auflagen' ? f.auflagen_dsb : ''], ['ISB', f.votum_isb === 'auflagen' ? f.auflagen_isb : ''],
+   ['01/3', f.votum_013 === 'auflagen' ? f.stn_013 : ''], ['15', f.votum_15 === 'auflagen' ? f.stn_15 : '']]
+    .forEach(([w, t]) => (t || '').split('\n').map(s => s.trim()).filter(Boolean).forEach(s => out.push(w + ': ' + s)));
+  return out;
+}
+// Übergang, wenn alle Stationen des aktuellen Status erledigt sind
+function transition(v){
+  const f = v.f, from = v.status;
+  const go = st => { enter(v, st); log(v, 'System', 'Weiter an: ' + ST[st]); };
+  switch (from){
+    case 'S0':
+      go('S1');
+      mail(v, 'R151', 'Prüfung vorhandene Lösung'); mail(v, 'R112', 'Zur Information: neuer Bedarf', 'wurde neu gemeldet.'); mail(v, 'R013', 'Zur Information: neuer Bedarf', 'wurde neu gemeldet.');
+      mail(v, 'FE', 'Eingangsbestätigung', 'ist eingegangen. Sie sehen den Stand jederzeit in der Laufkarte.'); break;
+    case 'S1':
+      if (f.strategie === 'nein'){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: passt nicht zur IT-Strategie', 'wurde von 15/1 abgelehnt.')); }
+      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); }
+      else { go('N1'); if (f.fin === 'ja' && f.gonrw === undefined) f.gonrw = true; mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. 01/3 und 15 melden sich für einen gemeinsamen Termin.'); }
+      break;
+    case 'V12':
+      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen');
+      if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.');
+      mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', 'wurde von allen Stellen bearbeitet. Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
+    case 'N1':
+      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 102 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an DSB und ISB.'); }
+      else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren'); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
+      break;
+    case 'B1':
+      go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 102 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); break;
+    case 'N2':
+      if (worstVotum(f) === 'nein'){ go('N4'); mail(v, 'FE', 'Klärung nach Ablehnung'); ['R112','R013','R15'].forEach(r => mail(v, r, 'Zur Information: nicht zugestimmt', 'hat keine Zustimmung von DSB oder ISB erhalten.')); }
+      else { go('N3'); mail(v, 'R112', 'Organisation prüfen, PR beteiligen'); mail(v, 'FE', 'Zur Information: Zustimmung DSB und ISB', 'hat die Zustimmung von DSB und ISB erhalten.'); }
+      break;
+    case 'N3':
+      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen');
+      if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.');
+      mail(v, 'FE', 'Rückmeldung mit Auflagen', 'ist freigegeben. Bitte beachten Sie die Auflagen.'); break;
+    case 'N4':
+      if (f.klaerung === 'erneut'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Erneute abschließende Stellungnahme', 'wurde überarbeitet erneut vorgelegt.')); }
+      else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){ go('N3'); mail(v, 'R112', 'Organisation prüfen, PR beteiligen (Freigabe KD)'); }
+      else { go('S90'); ['R112','R013','R15','DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Vorgang beendet', 'wurde ohne Einführung beendet.')); }
+      break;
+    case 'V3':
+      go('S99'); mail(v, 'FE', 'Software bereitgestellt', 'ist abgeschlossen. Die Software steht bereit.'); mail(v, 'R013', 'Zur Information: Einführung abgeschlossen', 'ist abgeschlossen.'); mail(v, 'KAT', 'Aufnahme ins Softwarekataster', 'ist abgeschlossen und wurde für das Kataster gemeldet.'); break;
+  }
+}
+
+// ===== Zustimmungen Dritter: Pflicht ergibt sich aus Angaben und Stellungnahmen =====
+function consentItems(f){
+  const dsb = f.chk_dsb || {}, isb = f.chk_isb || {};
+  return [
+    {k:'gpa', l:'Zulassung der GPA NRW (Finanzsoftware)', rg:'§ 94 Abs. 2 GO NRW', req: f.fin === 'ja', why:'Antragsteller: finanzrelevant'},
+    {k:'rpa', l:'Programmprüfung durch 14/1 vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen)', req: !!f.gonrw || f.fin === 'ja', why:'prüfungspflichtig'},
+    {k:'pr', l:'Zustimmung des Personalrats', rg:'BGA ADV, gepflegt von 11/2', req: f.pr_stufe === 'zustimmung', why:'11/2: Zustimmung erforderlich', auto: f.pr_stufe === 'zustimmung' && f.pr_datum ? f.pr_datum : null},
+    {k:'avv', l:'Auftragsverarbeitungsvertrag abgeschlossen', rg:'Art. 28 DSGVO', req: dsb[2] === 'ja', why:'DSB: AVV erforderlich'},
+    {k:'vvt', l:'Eintrag im Verzeichnis der Verarbeitungstätigkeiten', rg:'Art. 30 DSGVO', req: dsb[3] === 'ja', why:'DSB: VVT-Eintrag erforderlich'},
+    {k:'dsfa', l:'Datenschutz-Folgenabschätzung abgeschlossen', rg:'Art. 35 DSGVO, § 24 DSG NRW', req: dsb[4] === 'ja', why:'DSB: DSFA erforderlich'},
+    {k:'bk', l:'Bereichskonzept bzw. Schutzbedarfsfeststellung vorgelegt', rg:'Auflage ISB, blockiert die Bereitstellung nicht', req:false, hint: isb[1] === 'ja' ? 'von ISB gefordert' : ''},
+    {k:'land', l:'Zustimmung von Land, Bund oder Fachaufsicht', rg:'nur falls vorgeschrieben', req:false, hint: f.anlass === 'vorgabe' ? 'Vorgabe von Land oder Bund angegeben' : ''}
+  ];
+}
+function consentDone(f, it){ return !!(it.auto || (f.zust && f.zust[it.k] && f.zust[it.k].ok)); }
+function consentMissing(f){ return consentItems(f).filter(it => it.req && !consentDone(f, it)); }
+
+// ===== Felder: Werte, Sichtbarkeit, Rechte, Prüfung =====
+function val(v, id){ const d = state.drafts[v.id]; return d && id in d ? d[id] : v.f[id]; }
+function curF(v){ return Object.assign({}, v.f, state.drafts[v.id] || {}); }
+function visible(fd, v){ return !fd.show || fd.show(curF(v)); }
+function myOpenRf(v, role){ return (v.rfs || []).find(r => r.offen && r.to === role); }
+function rfFromMe(v, role){ return (v.rfs || []).find(r => r.offen && r.from === role); }
+function isActive(v, role){ return v.open.includes(role) && !v.done.includes(role); }
+function canEdit(fd, v){
+  const role = state.role;
+  if (fd.anytime) return !state.readonly && !FINAL(v.status) && v.status !== 'S0' && (role === 'FE' || (role === 'R15' && v.status === 'V3'));
+  if (state.readonly || !fd.own || fd.own !== role || FINAL(v.status)) return false;
+  if (isActive(v, role) && fd.st.includes(v.status)) return true;
+  // Während einer Rückfrage darf die angefragte Stelle ihre bereits bearbeiteten Angaben ändern
+  if (myOpenRf(v, role) && fd.st.some(s => v.reached.includes(s))) return true;
+  return false;
+}
+function isEmpty(fd, x){
+  switch (fd.t){
+    case 'checks': return fd.req === 'all' ? !(Array.isArray(x) && x.length === fd.opts.length) : !(Array.isArray(x) && x.length);
+    case 'check': return !x;
+    case 'q': return !x || fd.items.some((_, i) => !x[i]);
+    case 'repeat': return !Array.isArray(x) || x.filter(r => r && (r.p || '').trim()).length < (fd.min || 1);
+    default: return x == null || String(x).trim() === '';
+  }
+}
+function validate(v, role){
+  const f = curF(v), errs = [];
+  FIELDS.filter(fd => fd.own === role && fd.st && fd.st.includes(v.status) && visible(fd, v)).forEach(fd => {
+    if (fd.req && isEmpty(fd, f[fd.id])) errs.push(fd.l + (fd.t === 'q' ? ': bitte alle Punkte beantworten' : fd.t === 'repeat' ? `: mindestens ${fd.min} Einträge` : fd.req === 'all' ? ': bitte alle Schritte bestätigen' : ' fehlt'));
+  });
+  if (v.status === 'S0' && role === 'FE'){
+    if (f.vza && f.anlass !== 'neu' && !/^\s*\d+([.,]\d+)?\s*$/.test(f.vza)) errs.push('Einsparung bitte als Zahl angeben, z. B. 0,5');
+    if (Array.isArray(f.art) && f.art.length === 1 && f.art[0] === 'hardware') errs.push('Reine Hardware bitte über das Hardware-Formular beantragen');
+    if (f.ko && Object.values(f.ko).includes('nein')) errs.push('Ein KO-Kriterium ist nicht erfüllt. Bitte vorab mit 01/3 klären');
+  }
+  if (v.status === 'V3' && role === 'R15') consentMissing(f).forEach(it => errs.push('Zustimmung Dritter fehlt: ' + it.l));
+  if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && !f.kd_entscheidung) errs.push('Entscheidung des KD fehlt');
+  return errs;
+}
+
+// ===== Aktionen =====
+function latest(id){ return clone(state.items[id]); }
+function applyDraft(v, role){ // nur eigene Felder aus dem Entwurf übernehmen (parallele Stationen überschreiben sich nicht)
+  const d = state.drafts[v.id] || {};
+  FIELDS.filter(fd => fd.own === role || has(fd.editors, role)).forEach(fd => { if (fd.id in d) v.f[fd.id] = d[fd.id]; });
+}
+async function commit(v){ const ok = await store.save(v); if (ok){ delete state.drafts[v.id]; state.ui = {}; } renderAll(); return ok; }
+
+async function actSave(id){ const v = latest(id); applyDraft(v, state.role); log(v, SHORT[state.role], 'Zwischengespeichert'); if (await commit(v)) toast('Zwischengespeichert'); }
+async function actForward(id){
+  const role = state.role, v0 = state.items[id];
+  const errs = validate(v0, role);
+  if (errs.length){ state.ui.errs = errs; renderMain(); return; }
+  const v = latest(id); applyDraft(v, role);
+  v.done.push(role);
+  log(v, SHORT[role], 'Erledigt' + (v.status === 'S0' ? ' (Antrag abgesendet)' : ''), stationSummary(v, role));
+  if (role === 'R112' && v.f.pr_stufe && v.f.pr_stufe !== 'keine') mail(v, 'PR', v.f.pr_stufe === 'zustimmung' ? 'Zustimmung nach BGA ADV' : 'Anzeige nach BGA ADV', v.f.pr_stufe === 'zustimmung' ? 'wird Ihnen zur Zustimmung vorgelegt.' : 'wird Ihnen angezeigt.');
+  if (v.open.every(r => v.done.includes(r))) transition(v);
+  if (await commit(v)) toast(FINAL(v.status) ? 'Vorgang abgeschlossen' : 'Weitergeleitet');
+}
+function stationSummary(v, role){
+  const f = v.f, lab = (fd, x) => (FIELDS.find(q => q.id === fd).opts.find(o => o[0] === x) || [,''])[1];
+  switch (role){
+    case 'R151': return f.strategie === 'nein' ? 'Ablehnung IT-Strategie' : lab('verfahren', f.verfahren);
+    case 'R013': return 'Votum: ' + lab('votum_013', f.votum_013) + ', Ergebnis ' + (f.ergebnis || '');
+    case 'R15': return v.status === 'V3' ? 'Bereitstellung: ' + lab('bereitstellung', f.bereitstellung) : 'Votum: ' + lab('votum_15', f.votum_15);
+    case 'DSB': return 'Votum: ' + lab('votum_dsb', f.votum_dsb);
+    case 'ISB': return 'Votum: ' + lab('votum_isb', f.votum_isb);
+    case 'R112': return 'Org. Auswirkungen: ' + lab('org_auswirk', f.org_auswirk);
+    case 'FE': return v.status === 'N4' ? lab('klaerung', f.klaerung) : '';
+  }
+  return '';
+}
+async function actAsk(id){
+  const to = $('#rf_to').value, frage = $('#rf_text').value.trim();
+  if (!frage){ state.ui.rfErr = 'Bitte eine Frage eingeben.'; renderMain(); return; }
+  const v = latest(id); applyDraft(v, state.role);
+  v.rfs = v.rfs || []; v.rfs.push({id: rid(), from: state.role, to, frage, ts: nowIso(), offen: true});
+  log(v, SHORT[state.role], 'Rückfrage an ' + SHORT[to], frage);
+  mail(v, to, 'Rückfrage von ' + SHORT[state.role], `hat eine Rückfrage an Sie:\n„${frage}“\n`);
+  if (await commit(v)) toast('Rückfrage gesendet');
+}
+async function actAnswer(id, rfid){
+  const antwort = $('#rf_answer').value.trim();
+  if (!antwort){ state.ui.ansErr = 'Bitte eine Antwort eingeben.'; renderMain(); return; }
+  const v = latest(id); applyDraft(v, state.role);
+  const rf = v.rfs.find(r => r.id === rfid); rf.offen = false; rf.antwort = antwort; rf.ts_antwort = nowIso();
+  log(v, SHORT[state.role], 'Antwort an ' + SHORT[rf.from], antwort);
+  mail(v, rf.from, 'Antwort auf Ihre Rückfrage', `hat eine Antwort auf Ihre Rückfrage:\n„${antwort}“\n`);
+  if (await commit(v)) toast('Antwort gesendet');
+}
+async function actWithdraw(id){
+  const grund = ($('#wd_text')?.value || '').trim();
+  if (!grund){ state.ui.wdErr = 'Bitte einen Grund angeben.'; renderMain(); return; }
+  const v = latest(id); log(v, 'FE', 'Antrag zurückgezogen', grund); enter(v, 'S90');
+  [...new Set(['R151','R013','R112'].concat(v.reached.flatMap(s => OPEN[s])))].filter(r => r !== 'FE').forEach(r => mail(v, r, 'Zur Information: Antrag zurückgezogen', 'wurde von der FE zurückgezogen.'));
+  if (await commit(v)) toast('Antrag zurückgezogen');
+}
+async function actAck(id){
+  const v = latest(id); v.f.auflagen_ok = nowIso(); log(v, 'FE', 'Auflagen zur Kenntnis genommen');
+  if (await commit(v)) toast('Kenntnisnahme gespeichert');
+}
+function newVorgang(){
+  const n = Object.keys(state.items).length + 1;
+  return {id: rid(), nr: 'SW-' + new Date().getFullYear() + '-' + String(n).padStart(4, '0'), created: nowIso(), status: 'S0', open: ['FE'], done: [], reached: ['S0'], since: nowIso(), frist: addWorkdays(nowIso(), FRIST_TAGE), f: {}, log: [], mails: [], rfs: []};
+}
+async function actNew(){
+  const v = newVorgang(); log(v, 'FE', 'Antrag angelegt');
+  if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'all'; renderAll(); }
+}
+async function actSample(){
+  // Beispielvorgang, bereits abgesendet: liegt bei 15/1
+  const v = newVorgang();
+  Object.assign(v.f, {fe_oe:'50/2 Soziales (Beispiel)', fe_kontakt:'Beispielperson', verantwortlich:'Beispielperson', nutzer:'Terminvergabe 50/2, ca. 12 Personen', fin:'nein', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung', ds_vor:{0:'unklar',1:'nein',2:'nein',3:'nein',4:'ja',5:'unklar'}, vorhaben:'Digitale Terminvergabe (Beispiel)',
+    bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
+    anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, Termine sind besser vorbereitet. Künftig bucht die Bürgerin selbst, die Sachbearbeitung sieht den Kalender.',
+    produkt_wunsch:'', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall weiter telefonische Terminvergabe.', pbd:'ja', ko:{0:'ja',1:'unklar',2:'ja',3:'ja',4:'ja'}});
+  log(v, 'FE', 'Antrag angelegt'); v.done.push('FE'); log(v, 'FE', 'Erledigt (Antrag abgesendet)'); transition(v);
+  if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'all'; renderAll(); toast('Beispielvorgang angelegt; er liegt bei 15/1'); }
+}
+
+// ===== Darstellung =====
+function liegtBei(v){
+  if (FINAL(v.status)) return [];
+  const r = v.open.filter(x => !v.done.includes(x));
+  (v.rfs || []).filter(x => x.offen).forEach(x => { if (!r.includes(x.to)) r.push(x.to); });
+  return r;
+}
+function atMe(v){ return liegtBei(v).includes(state.role); }
+function renderList(){
+  const all = Object.values(state.items).sort((a, b) => (b.since || '').localeCompare(a.since || ''));
+  const list = all.filter(v => state.filter === 'me' ? atMe(v) : state.filter === 'done' ? FINAL(v.status) : true);
+  document.querySelectorAll('[data-filter]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filter === state.filter)));
+  const el = $('#list');
+  if (!all.length){ el.innerHTML = `<div class="empty"><h3>Noch keine Vorgänge</h3><p>Legen Sie als Antragsteller einen Antrag an oder erzeugen Sie einen Beispielvorgang.</p></div>`; }
+  else if (!list.length){ el.innerHTML = `<div class="empty"><p>${state.filter === 'me' ? 'Bei ' + esc(SHORT[state.role]) + ' liegt gerade nichts.' : 'Keine Vorgänge in dieser Ansicht.'}</p></div>`; }
+  else el.innerHTML = list.map(v => {
+    const late = !FINAL(v.status) && new Date(v.frist) < new Date();
+    const chips = FINAL(v.status) ? `<span class="chip ${v.status === 'S99' ? 'ok' : 'late'}">${esc(ST[v.status])}</span>`
+      : liegtBei(v).map(r => `<span class="chip ${r === state.role ? 'me' : ''}">${esc(SHORT[r])}</span>`).join('') + `<span class="chip num ${late ? 'late' : ''}">${daysSince(v.since)} T</span>`;
+    return `<button type="button" class="item" data-open="${esc(v.id)}" aria-current="${v.id === state.sel}"><span class="nr">${esc(v.nr)}</span><span class="t">${esc(v.f.vorhaben || 'Neuer Antrag')}</span><span class="sub">${esc(ST[v.status])}</span><div class="chips" style="margin-top:4px">${chips}</div></button>`;
+  }).join('');
+  $('#newbtns').innerHTML = (state.role === 'FE' && !state.readonly ? `<button type="button" class="primary" data-act="new">Neuen Antrag anlegen</button>` : '') +
+    `<button type="button" data-act="sample">Beispielvorgang erzeugen</button>`;
+}
+function stations(v){
+  const f = v.f, r = v.reached, s = [{k:'S0', l:'Antrag', o:'Antragsteller'}, {k:'S1', l:'Prüfung', o:'15/1'}];
+  if (f.strategie === 'nein'){}
+  else if (f.verfahren === 'vorhanden') s.push({k:'V12', l:'Org. + DSB/ISB', o:'11/2 · DSB · ISB'}, {k:'V3', l:'Bereitstellung', o:'15'});
+  else if (f.verfahren === 'neu'){
+    s.push({k:'N1', l:'Fortschreibung', o:'01/3 · 15'});
+    if (f.ergebnis === 'B' || r.includes('B1')) s.push({k:'B1', l:'Auswahl', o:'Antragsteller'});
+    s.push({k:'N2', l:'Stellungnahme', o:'DSB · ISB'});
+    if (r.includes('N4')) s.push({k:'N4', l:'Klärung', o:'Antragsteller'});
+    s.push({k:'N3', l:'Org. + PR', o:'11/2'}, {k:'V3', l:'Bereitstellung', o:'15'});
+  } else s.push({k:'?', l:'Weg folgt nach Prüfung', o:''});
+  s.push(v.status === 'S90' ? {k:'S90', l:'Ende ohne Einführung', o:''} : {k:'S99', l:'Abschluss + Kataster', o:''});
+  return s.map(x => Object.assign(x, {cls: x.k === v.status ? (x.k === 'S90' ? 'end' : FINAL(x.k) ? 'done' : 'now') : r.includes(x.k) ? 'done' : ''}));
+}
+function optsHtml(fd, x, ed, multi){
+  const name = 'f_' + fd.id;
+  return `<div class="opts ${fd.col ? 'col' : ''}">` + fd.opts.map(([k, l]) => {
+    const on = multi ? has(x, k) : x === k;
+    return `<label><input type="${multi ? 'checkbox' : 'radio'}" name="${name}" data-f="${fd.id}" data-k="${esc(k)}" ${on ? 'checked' : ''} ${ed ? '' : 'disabled'}> <span>${esc(l)}</span></label>`;
+  }).join('') + `</div>`;
+}
+function roText(fd, x){
+  if (x == null || x === '' || (Array.isArray(x) && !x.length)) return `<div class="ro empty">keine Angabe</div>`;
+  if (fd.t === 'radio') return `<div class="ro">${esc((fd.opts.find(o => o[0] === x) || [,x])[1])}</div>`;
+  if (fd.t === 'checks') return `<div class="ro">${fd.opts.filter(o => has(x, o[0])).map(o => esc(o[1])).join('\n')}</div>`;
+  if (fd.t === 'check') return `<div class="ro">${x ? 'Ja' : 'Nein'}</div>`;
+  if (fd.t === 'date') return `<div class="ro">${esc(fmtDateStr(x))}</div>`;
+  if (fd.t === 'file') return `<div class="ro">📎 ${esc(x)}</div>`;
+  return `<div class="ro">${esc(x)}</div>`;
+}
+function fieldHtml(fd, v){
+  if (fd.t === 'info') return `<div class="callout ${fd.kind || ''}">${esc(fd.l)}</div>`;
+  const ed = canEdit(fd, v), x = val(v, fd.id), id = 'f_' + fd.id;
+  const req = fd.req && ed ? '<span class="req" aria-hidden="true">*</span>' : '';
+  const help = fd.h && ed ? `<p class="help">${esc(fd.h)}</p>` : '';
+  let body;
+  switch (fd.t){
+    case 'text': case 'date':
+      body = ed ? `<input type="${fd.t}" id="${id}" data-f="${fd.id}" value="${esc(x || '')}">` : roText(fd, x); break;
+    case 'textarea':
+      body = ed ? `<textarea id="${id}" data-f="${fd.id}">${esc(x || '')}</textarea>` : roText(fd, x); break;
+    case 'radio': body = ed ? optsHtml(fd, x, ed, false) : roText(fd, x); break;
+    case 'checks': body = ed ? optsHtml(fd, x, ed, true) : roText(fd, x); break;
+    case 'check':
+      body = ed ? `<label class="opts"><input type="checkbox" id="${id}" data-f="${fd.id}" ${x ? 'checked' : ''}> <span>Ja</span></label>` : roText(fd, x); break;
+    case 'file':
+      body = ed ? `<input type="file" id="${id}" data-f="${fd.id}">${x ? `<div class="sub">Aktuell: ${esc(x)}</div>` : ''}<div class="sub">Prototyp: Es wird nur der Dateiname gespeichert.</div>` : roText(fd, x); break;
+    case 'q': {
+      const ans = fd.answers;
+      body = fd.items.map((it, i) => {
+        const cur = x && x[i];
+        const ctl = ed ? `<span class="seg" role="radiogroup" aria-label="${esc(it)}">` + ans.map(([k, l]) => `<label><input type="radio" name="${id}_${i}" data-f="${fd.id}" data-k="${i}" data-v="${k}" ${cur === k ? 'checked' : ''}>${esc(l)}</label>`).join('') + `</span>`
+          : `<span class="chip ${cur === 'nein' ? 'late' : cur === 'unklar' ? '' : cur ? 'ok' : ''}">${esc((ans.find(a => a[0] === cur) || [,'offen'])[1])}</span>`;
+        return `<div class="qrow"><span>${esc(it)}</span>${ctl}</div>`;
+      }).join(''); break;
+    }
+    case 'consent': {
+      const f = curF(v), z = x || {};
+      body = consentItems(f).map(it => {
+        const c = z[it.k] || {}, done = consentDone(f, it);
+        const tag = it.req ? (done ? '<span class="chip ok">erteilt</span>' : '<span class="chip late">Pflicht, offen</span>') : (done ? '<span class="chip ok">erteilt</span>' : '<span class="chip">bei Bedarf</span>');
+        const info = `<div><b>${esc(it.l)}</b> ${tag}<div class="sub">${esc(it.rg)}${it.req && it.why ? ' · Pflicht wegen ' + esc(it.why) : ''}${it.hint ? ' · ' + esc(it.hint) : ''}</div></div>`;
+        let ctl;
+        if (it.auto) ctl = `<div class="ctl sub">erteilt am ${esc(fmtDateStr(it.auto))} (aus Abschnitt 7)</div>`;
+        else if (ed) ctl = `<div class="ctl"><label class="opts"><input type="checkbox" data-f="zust" data-k="${it.k}" data-sub="ok" ${c.ok ? 'checked' : ''}> <span>erteilt</span></label>`
+          + (c.ok ? `<input type="date" aria-label="Erteilt am" data-f="zust" data-k="${it.k}" data-sub="am" value="${esc(c.am || '')}"><input type="file" aria-label="Nachweis" data-f="zust" data-k="${it.k}" data-sub="dok">${c.dok ? `<span class="sub">📎 ${esc(c.dok)}</span>` : ''}` : '') + `</div>`;
+        else ctl = `<div class="ctl sub">${c.ok ? 'erteilt' + (c.am ? ' am ' + esc(fmtDateStr(c.am)) : '') + (c.dok ? ' · 📎 ' + esc(c.dok) : '') : 'offen'}</div>`;
+        return `<div class="crow">${info}${ctl}</div>`;
+      }).join('');
+      break;
+    }
+    case 'repeat': {
+      const ph = fd.ph || ['Produkt','Ergebnis in einem Satz'];
+      const rows = Array.isArray(x) && x.length ? x : Array.from({length: fd.rows || 2}, () => ({p:'', e:''}));
+      body = ed ? rows.map((r, i) => `<div class="rep"><input type="text" aria-label="Produkt ${i + 1}" placeholder="${esc(ph[0])}" data-f="${fd.id}" data-k="${i}" data-sub="p" value="${esc(r.p)}"><input type="text" aria-label="Ergebnis ${i + 1}" placeholder="${esc(ph[1])}" data-f="${fd.id}" data-k="${i}" data-sub="e" value="${esc(r.e)}"><button type="button" class="ghost" data-act="rowdel" data-f="${fd.id}" data-k="${i}" aria-label="Zeile entfernen">Entfernen</button></div>`).join('') + `<button type="button" class="ghost" data-act="rowadd" data-f="${fd.id}">+ Zeile hinzufügen</button>`
+        : (Array.isArray(x) && x.length ? `<div class="tw" style="margin:0"><table class="log"><thead><tr><th>${esc(ph[0])}</th><th>${esc(ph[1])}</th></tr></thead><tbody>${x.filter(r => r.p).map(r => `<tr><td>${esc(r.p)}</td><td>${esc(r.e)}</td></tr>`).join('')}</tbody></table></div>` : roText(fd, ''));
+      break;
+    }
+  }
+  const forAttr = ['text','date','textarea','file','check'].includes(fd.t) && ed ? ` for="${id}"` : '';
+  return `<div class="fld"><label class="lbl"${forAttr}>${esc(fd.l)}${req}</label>${help}${body}</div>`;
+}
+function secHtml(sec, v){
+  const fds = FIELDS.filter(fd => fd.sec === sec.n && visible(fd, v));
+  const owners = [...new Set(fds.filter(fd => fd.own).map(fd => fd.own))];
+  const mine = fds.some(fd => canEdit(fd, v));
+  const secSts = [...new Set(fds.filter(fd => fd.st).flatMap(fd => fd.st))];
+  const active = !FINAL(v.status) && secSts.includes(v.status) && owners.some(o => isActive(v, o));
+  const badge = sec.n === 9 ? (consentMissing(curF(v)).length ? `<span class="chip late">${consentMissing(curF(v)).length} Pflicht offen</span>` : '<span class="chip ok">vollständig</span>') : mine ? '<span class="chip me">Ihr Abschnitt</span>' : active ? '<span class="chip">in Bearbeitung</span>' : '<span class="chip ok">erledigt</span>';
+  const open = mine || active || state.ui['sec' + sec.n] || state.role === 'PR' || state.role === 'R141';
+  let inner = mine ? `<div class="intro">${esc(sec.intro)}</div>` : '';
+  if (owners.length > 1){
+    owners.forEach(o => {
+      inner += `<div class="owner">${esc(ROLES[o])}</div>` + fds.filter(fd => fd.own === o || (!fd.own && o === owners[0])).map(fd => fieldHtml(fd, v)).join('');
+    });
+  } else inner += fds.map(fd => fieldHtml(fd, v)).join('');
+  return `<details class="sec ${mine ? 'mine' : ''}" data-sec="${sec.n}" ${open ? 'open' : ''}><summary><div><h3>${sec.n} ${esc(sec.title)}</h3><span class="oe">${esc(sec.oe)}</span></div><span class="sumright"><button type="button" class="ghost secfb" data-act="fbsec" data-k="${sec.n}">Feedback</button>${badge}</span></summary><div class="secbody">${inner}</div></details>`;
+}
+const FB_STATUS = ['offen','übernommen','zurückgestellt','erledigt'];
+function fbSorted(){ return Object.values(state.fb).sort((a, b) => (b.ts || '').localeCompare(a.ts || '')); }
+function fbMarkdown(list){
+  return list.map(x => `- [${x.status}] ${x.art} · ${x.bezug}${x.vorgang ? ' · ' + x.vorgang : ''} · Ansicht ${x.rolle} · ${fmtT(x.ts)}\n  ${String(x.text).replace(/\n/g, '\n  ')}`).join('\n');
+}
+function renderFbList(){
+  const list = fbSorted(), offen = list.filter(x => x.status === 'offen').length;
+  let h = `<div class="head"><div><h2>Feedback-Liste</h2><div class="sub">${list.length} Rückmeldungen, davon ${offen} offen</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start"><button type="button" data-act="fbcopy">Offene als Text kopieren</button><button type="button" data-act="fbcopyall">Alle kopieren</button><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>`;
+  if (!list.length) h += `<div class="empty"><h3>Noch kein Feedback</h3><p>Über „Feedback geben“ oben oder den Knopf „Feedback“ an jedem Abschnitt kann jede testende Person eine Rückmeldung hinterlassen.</p></div>`;
+  h += list.map(x => `<div class="fbitem ${x.status === 'offen' ? '' : 'done'}"><div class="row"><span class="chip ${x.art === 'Fehler' ? 'late' : x.art === 'Lob' ? 'ok' : ''}">${esc(x.art)}</span><span class="chip">${esc(x.bezug)}</span>${x.vorgang ? `<span class="chip">${esc(x.vorgang)}</span>` : ''}<span class="sub">Ansicht ${esc(x.rolle)} · ${fmtT(x.ts)}</span></div>
+    <div class="txt">${esc(x.text)}</div>
+    <div class="row"><label class="sub" for="fbst_${esc(x.id)}">Status</label><select id="fbst_${esc(x.id)}" data-fbstatus="${esc(x.id)}">${FB_STATUS.map(st => `<option ${st === x.status ? 'selected' : ''}>${st}</option>`).join('')}</select><button type="button" class="ghost" data-act="fbdel" data-k="${esc(x.id)}">Löschen</button></div></div>`).join('');
+  $('#main').innerHTML = h;
+}
+function openFb(bezug){
+  const v = state.items[state.sel], opts = ['Allgemein', 'Ablauf und Reihenfolge der Stellen', 'Mails und Fristen'].concat(SECS.map(q => `Abschnitt ${q.n} ${q.title}`));
+  $('#fb_bezug').innerHTML = opts.map(o => `<option ${o === bezug ? 'selected' : ''}>${esc(o)}</option>`).join('');
+  $('#fb_err').hidden = true; $('#fbdrawer').hidden = false; $('#fb_text').focus();
+}
+async function sendFb(){
+  const text = $('#fb_text').value.trim(); if (!text){ $('#fb_err').hidden = false; return; }
+  const v = state.view === 'karte' ? state.items[state.sel] : null, id = rid();
+  const ok = await store.saveFb(id, {id, ts: nowIso(), art: $('#fb_art').value, bezug: $('#fb_bezug').value, text, rolle: SHORT[state.role], vorgang: v ? v.nr + ' (' + ST[v.status] + ')' : '', status: 'offen'});
+  if (ok){ $('#fb_text').value = ''; $('#fbdrawer').hidden = true; toast('Danke, Feedback gespeichert'); renderAll(); }
+}
+function renderMain(){
+  $('#fbcount').textContent = Object.values(state.fb).filter(x => x.status === 'offen').length;
+  if (state.view === 'fb') return renderFbList();
+  const m = $('#main'), v = state.items[state.sel];
+  if (!v){
+    m.innerHTML = `<div class="empty"><h3>Kein Vorgang gewählt</h3><p>Wählen Sie links einen Vorgang. Oben stellen Sie ein, aus Sicht welcher Stelle Sie testen.</p><p class="sub">Ablauf im Test: Antrag als Antragsteller anlegen und absenden, dann Rolle wechseln (15/1, 01/3, 15, DSB, ISB, 11/2) und jeweils weiterleiten. Jede Mail landet im Reiter „Mails“.</p></div>`;
+    return;
+  }
+  const scroll = window.scrollY;
+  const role = state.role, bei = liegtBei(v), late = !FINAL(v.status) && new Date(v.frist) < new Date();
+  let h = `<div class="head"><div><span class="nr">${esc(v.nr)}</span><h2>${esc(v.f.vorhaben || 'Neuer Antrag')}</h2><div class="sub">${esc(v.f.fe_oe || 'Antragsteller')} · angelegt ${fmt(v.created)}</div></div>
+    <div class="where">${FINAL(v.status) ? `<b>${esc(ST[v.status])}</b>` : `Liegt bei: <b>${bei.map(r => esc(SHORT[r])).join(', ')}</b><br><span class="sub">seit ${fmt(v.since)} · Frist <span class="num" style="${late ? 'color:var(--bad);font-weight:600' : ''}">${fmt(v.frist)}</span></span>`}</div></div>`;
+  if (v.f.vza && v.f.vza.trim() !== '0') h += `<div style="margin-top:8px"><span class="chip">Geschätzte Einsparung: ${esc(v.f.vza)} VZÄ/Jahr</span></div>`;
+  { const ci = consentItems(v.f).filter(it => it.req); if (ci.length) { const d = ci.filter(it => consentDone(v.f, it)).length; h += `<div style="margin-top:8px"><span class="chip ${d === ci.length ? 'ok' : 'late'}">Zustimmungen Dritter: ${d} von ${ci.length} erteilt</span></div>`; } }
+  h += `<div class="route" aria-label="Fortschritt">${stations(v).map(s => `<div class="stop ${s.cls}"><i aria-hidden="true"></i><span>${esc(s.l)}</span><span class="sub">${esc(s.o)}</span></div>`).join('')}</div>`;
+  h += `<div class="tabs" role="tablist">${[['karte','Laufkarte'],['zettel','Laufzettel (' + v.log.length + ')'],['mails','Mails (' + v.mails.length + ')']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${l}</button>`).join('')}</div>`;
+
+  if (state.tab === 'zettel'){
+    h += `<div class="tw"><table class="log"><thead><tr><th>Zeit</th><th>Stelle</th><th>Aktion</th><th>Kommentar</th></tr></thead><tbody>${v.log.slice().reverse().map(e => `<tr><td class="num">${fmtT(e.ts)}</td><td>${esc(e.rolle)}</td><td>${esc(e.aktion)}</td><td>${esc(e.kommentar)}</td></tr>`).join('')}</tbody></table></div>`;
+  } else if (state.tab === 'mails'){
+    h += `<p class="sub" style="margin-top:12px">Im Testmodus gehen alle Mails an ${esc(TESTMAIL)}. Der Betreff nennt die Stelle, an die die Mail im Echtbetrieb ginge. Im Prototyp werden Mails nur protokolliert, nicht verschickt.</p>`;
+    h += v.mails.slice().reverse().map((ml, i) => `<div class="mail"><div class="meta"><span class="num">${fmtT(ml.ts)}</span><span>An: ${esc(ml.an)}</span><span>Echtbetrieb: ${esc(ml.ziel)}</span></div><div class="subj">${esc(ml.betreff)}</div><pre>${esc(ml.text)}</pre><button type="button" class="ghost" data-act="copymailtext" data-k="${v.mails.length - 1 - i}">Text kopieren</button></div>`).join('') || '<p class="sub">Noch keine Mails.</p>';
+  } else {
+    // Hinweise oben
+    const rfMe = myOpenRf(v, role);
+    if (rfMe){
+      h += `<div class="banner warn"><h4>Rückfrage von ${esc(SHORT[rfMe.from])}</h4><p style="margin:0 0 8px">${esc(rfMe.frage)}</p>
+        <label class="lbl" for="rf_answer">Ihre Antwort</label><textarea id="rf_answer">${esc(state.ui.ansDraft || '')}</textarea>
+        ${state.ui.ansErr ? `<p class="errs" style="padding:0">${esc(state.ui.ansErr)}</p>` : ''}
+        <p class="sub">Sie können Ihre bisherigen Angaben unten bei Bedarf ergänzen. Mit dem Senden geht die Laufkarte zurück an ${esc(SHORT[rfMe.from])}.</p>
+        <button type="button" class="primary" data-act="answer" data-k="${esc(rfMe.id)}">Antwort senden</button></div>`;
+    }
+    const answered = (v.rfs || []).filter(r => !r.offen && r.from === role && isActive(v, role));
+    answered.forEach(r => { h += `<div class="banner info"><h4>Antwort von ${esc(SHORT[r.to])} auf Ihre Rückfrage</h4><p style="margin:0"><span class="sub">Frage:</span> ${esc(r.frage)}<br><span class="sub">Antwort:</span> ${esc(r.antwort)}</p></div>`; });
+    const own = rfFromMe(v, role);
+    if (own) h += `<div class="banner info"><h4>Ihre Rückfrage an ${esc(SHORT[own.to])} ist offen</h4><p style="margin:0">${esc(own.frage)}</p></div>`;
+    if (v.status === 'S99'){
+      const af = auflagenListe(v.f);
+      h += `<div class="banner good"><h4>Software bereitgestellt am ${esc(fmtDateStr(v.f.bereit_am))}</h4><p style="margin:0">Aufgenommen in das Softwarekataster${v.f.kataster_id ? ' unter ' + esc(v.f.kataster_id) : ''}.</p></div>`;
+      if (af.length){
+        h += `<div class="banner warn"><h4>Auflagen für den Antragsteller</h4><ul style="margin:4px 0 8px;padding-left:18px">${af.map(a => `<li>${esc(a)}</li>`).join('')}</ul>${v.f.auflagen_ok ? `<span class="chip ok">Zur Kenntnis genommen am ${fmt(v.f.auflagen_ok)}</span>` : role === 'FE' ? `<button type="button" class="primary" data-act="ack">Auflagen zur Kenntnis genommen</button>` : '<span class="chip">Kenntnisnahme durch den Antragsteller offen</span>'}</div>`;
+      }
+    }
+    if (v.status === 'S90') h += `<div class="banner bad"><h4>Vorgang ohne Einführung beendet</h4><p style="margin:0">Den Grund finden Sie im Laufzettel.</p></div>`;
+    if (!FINAL(v.status) && !bei.includes(role) && !['PR','R141'].includes(role)) h += `<div class="banner info"><h4>Der Vorgang liegt gerade nicht bei ${esc(SHORT[role])}</h4><p style="margin:0">Sie sehen alle bisherigen Angaben schreibgeschützt. Zum Testen wechseln Sie oben die Rolle zu ${bei.map(r => esc(ROLES[r])).join(' oder ')}.</p></div>`;
+    if (v.status === 'V3' && role === 'R15' && consentMissing(v.f).length) h += `<div class="banner bad"><h4>Bereitstellung noch nicht möglich</h4><p style="margin:0">Offene Pflicht-Zustimmungen: ${consentMissing(v.f).map(it => esc(it.l)).join(', ')}. Der Antragsteller pflegt diese in Abschnitt 9; nutzen Sie bei Bedarf „Rückfrage an …“.</p></div>`;
+    if (v.status === 'V3' && role === 'R15' && auflagenListe(v.f).length) h += `<div class="banner warn"><h4>Auflagen beachten</h4><ul style="margin:4px 0 0;padding-left:18px">${auflagenListe(v.f).map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`;
+    h += SECS.filter(s => s.when(v)).map(s => secHtml(s, v)).join('');
+
+    // Aktionsleiste
+    const active = isActive(v, role) && !state.readonly;
+    if (active || (role === 'FE' && !FINAL(v.status) && !state.readonly)){
+      h += `<div class="actions">`;
+      if (active){
+        const lbl = v.status === 'S0' ? 'Antrag absenden' : v.status === 'V3' ? 'Bereitstellung bestätigen' : 'Erledigt, weiterleiten';
+        h += `<button type="button" class="primary" data-act="forward" ${own ? 'disabled title="Erst nach Antwort auf Ihre Rückfrage"' : ''}>${lbl}</button>`;
+        h += `<button type="button" data-act="save">Zwischenspeichern</button>`;
+        if (v.status !== 'S0') h += `<button type="button" data-act="askopen" ${own ? 'disabled' : ''}>Rückfrage an …</button>`;
+      }
+      if (!active && role === 'FE' && v.status !== 'S0') h += `<button type="button" data-act="save">Zustimmungen speichern</button>`;
+      h += `<span class="sp"></span>`;
+      if (role === 'FE' && v.status !== 'S0') h += `<button type="button" class="danger" data-act="wdopen">Antrag zurückziehen</button>`;
+      if (v.status === 'S0' && role === 'FE') h += `<button type="button" class="danger" data-act="delopen">Entwurf löschen</button>`;
+      h += `</div>`;
+      if (state.ui.errs && state.ui.errs.length) h += `<ul class="errs" role="alert">${state.ui.errs.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
+      if (state.ui.ask){
+        const targets = ACTIVE_ROLES.filter(r => r !== role);
+        h += `<div class="inline"><label class="lbl" for="rf_to">Rückfrage an</label><select id="rf_to">${targets.map(r => `<option value="${r}" ${r === 'FE' ? 'selected' : ''}>${esc(ROLES[r])}</option>`).join('')}</select>
+          <label class="lbl" for="rf_text">Ihre Frage</label><textarea id="rf_text"></textarea>${state.ui.rfErr ? `<p class="errs" style="padding:0">${esc(state.ui.rfErr)}</p>` : ''}
+          <div style="display:flex;gap:8px"><button type="button" class="primary" data-act="ask">Rückfrage senden</button><button type="button" data-act="askclose">Abbrechen</button></div></div>`;
+      }
+      if (state.ui.wd){
+        h += `<div class="inline"><label class="lbl" for="wd_text">Grund für den Rückzug</label><textarea id="wd_text"></textarea>${state.ui.wdErr ? `<p class="errs" style="padding:0">${esc(state.ui.wdErr)}</p>` : ''}
+          <div style="display:flex;gap:8px"><button type="button" class="danger" data-act="withdraw">Endgültig zurückziehen</button><button type="button" data-act="wdclose">Abbrechen</button></div></div>`;
+      }
+      if (state.ui.del){
+        h += `<div class="inline"><p style="margin:0">Den Entwurf wirklich löschen? Das lässt sich nicht rückgängig machen.</p><div style="display:flex;gap:8px"><button type="button" class="danger" data-act="del">Löschen</button><button type="button" data-act="delclose">Abbrechen</button></div></div>`;
+      }
+    }
+  }
+  if (state.tab !== 'karte' || !isActive(v, role)) h += `<p class="sub" style="margin-top:18px"><button type="button" class="ghost" data-act="testdelopen">Testvorgang löschen</button></p>` + (state.ui.tdel ? `<div class="inline"><p style="margin:0">Diesen Testvorgang für alle löschen?</p><div style="display:flex;gap:8px"><button type="button" class="danger" data-act="del">Löschen</button><button type="button" data-act="tdelclose">Abbrechen</button></div></div>` : '');
+  m.innerHTML = h;
+  window.scrollTo(0, scroll);
+}
+function renderAll(){ renderList(); renderMain(); }
+// Bei Änderungen anderer: Formular nicht neu aufbauen, solange gerade getippt wird
+function renderSoft(){ renderList(); const a = document.activeElement; if (a && a.closest && a.closest('#main') && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; renderMain(); }
+
+// ===== Ereignisse =====
+function setDraft(id, k, x){ (state.drafts[id] = state.drafts[id] || {})[k] = x; }
+function onFieldEvent(e){
+  const el = e.target, fid = el.dataset.f; if (!fid || !state.sel) return;
+  const v = state.items[state.sel], fd = FIELDS.find(q => q.id === fid); if (!fd || !canEdit(fd, v)) return;
+  let rerender = false;
+  switch (fd.t){
+    case 'text': case 'textarea': case 'date': setDraft(v.id, fid, el.value); break;
+    case 'radio': setDraft(v.id, fid, el.dataset.k); rerender = true; break;
+    case 'check': setDraft(v.id, fid, el.checked); rerender = true; break;
+    case 'checks': { const cur = (val(v, fid) || []).filter(x => x !== el.dataset.k); if (el.checked) cur.push(el.dataset.k); setDraft(v.id, fid, cur); rerender = true; break; }
+    case 'q': { const cur = Object.assign({}, val(v, fid) || {}); cur[el.dataset.k] = el.dataset.v; setDraft(v.id, fid, cur); rerender = true; break; }
+    case 'file': setDraft(v.id, fid, el.files && el.files[0] ? el.files[0].name : ''); rerender = true; break;
+    case 'consent': { const cur = clone(val(v, fid) || {}); const k = el.dataset.k, sub = el.dataset.sub; cur[k] = cur[k] || {};
+      if (sub === 'ok') cur[k].ok = el.checked; else if (sub === 'am') cur[k].am = el.value; else if (sub === 'dok') cur[k].dok = el.files && el.files[0] ? el.files[0].name : '';
+      setDraft(v.id, fid, cur); rerender = sub !== 'am'; break; }
+    case 'repeat': { const rows = clone(val(v, fid) || Array.from({length: fd.rows || 2}, () => ({p:'', e:''}))); rows[+el.dataset.k][el.dataset.sub] = el.value; setDraft(v.id, fid, rows); break; }
+  }
+  if (rerender && e.type === 'change'){ state.ui.errs = null; renderMain(); }
+}
+document.addEventListener('input', e => { if (e.target.closest('#main')) onFieldEvent(e); if (e.target.id === 'rf_answer') state.ui.ansDraft = e.target.value; });
+document.addEventListener('change', e => {
+  if (e.target.dataset.fbstatus){ const x = clone(state.fb[e.target.dataset.fbstatus]); x.status = e.target.value; store.saveFb(x.id, x); return; }
+  if (e.target.closest('#main') && e.target.dataset.f) onFieldEvent(e);
+});
+document.addEventListener('toggle', e => { const s = e.target.closest && e.target.closest('details[data-sec]'); if (s) state.ui['sec' + s.dataset.sec] = s.open; }, true);
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'fbopen'){ openFb('Allgemein'); return; }
+  if (b.id === 'fblist'){ state.view = 'fb'; renderAll(); return; }
+  if (b.id === 'fb_cancel'){ $('#fbdrawer').hidden = true; return; }
+  if (b.id === 'fb_send'){ return sendFb(); }
+  if (b.dataset.act === 'fbsec'){ e.preventDefault(); const q = SECS.find(x => x.n === +b.dataset.k); openFb(`Abschnitt ${q.n} ${q.title}`); return; }
+  if (b.dataset.act === 'fbback'){ state.view = 'karte'; renderAll(); return; }
+  if (b.dataset.act === 'fbcopy'){ return copy(fbMarkdown(fbSorted().filter(x => x.status === 'offen')) || 'Kein offenes Feedback'); }
+  if (b.dataset.act === 'fbcopyall'){ return copy(fbMarkdown(fbSorted()) || 'Kein Feedback'); }
+  if (b.dataset.act === 'fbdel'){ await store.saveFb(b.dataset.k, null); return; }
+  if (b.dataset.open){ state.view = 'karte'; state.sel = b.dataset.open; state.tab = 'karte'; state.ui = {}; renderAll(); $('#main').scrollIntoView({block:'start', behavior:'smooth'}); return; }
+  if (b.dataset.filter){ state.filter = b.dataset.filter; renderList(); return; }
+  if (b.dataset.tab){ state.tab = b.dataset.tab; renderMain(); return; }
+  const id = state.sel, a = b.dataset.act;
+  switch (a){
+    case 'new': return actNew();
+    case 'sample': return actSample();
+    case 'save': return actSave(id);
+    case 'forward': return actForward(id);
+    case 'askopen': state.ui.ask = true; renderMain(); return;
+    case 'askclose': state.ui.ask = false; renderMain(); return;
+    case 'ask': return actAsk(id);
+    case 'answer': return actAnswer(id, b.dataset.k);
+    case 'wdopen': state.ui.wd = true; renderMain(); return;
+    case 'wdclose': state.ui.wd = false; renderMain(); return;
+    case 'withdraw': return actWithdraw(id);
+    case 'delopen': state.ui.del = true; renderMain(); return;
+    case 'delclose': state.ui.del = false; renderMain(); return;
+    case 'testdelopen': state.ui.tdel = true; renderMain(); return;
+    case 'tdelclose': state.ui.tdel = false; renderMain(); return;
+    case 'del': await store.del(id); state.sel = null; state.ui = {}; renderAll(); toast('Gelöscht'); return;
+    case 'ack': return actAck(id);
+    case 'rowadd': { const v = state.items[id]; const rows = clone(val(v, b.dataset.f) || [{p:'', e:''}, {p:'', e:''}]); rows.push({p:'', e:''}); setDraft(id, b.dataset.f, rows); renderMain(); return; }
+    case 'rowdel': { const v = state.items[id]; const rows = clone(val(v, b.dataset.f) || []); rows.splice(+b.dataset.k, 1); setDraft(id, b.dataset.f, rows); renderMain(); return; }
+    case 'copymailtext': { const ml = state.items[id].mails[+b.dataset.k]; copy(`An: ${ml.an}\nBetreff: ${ml.betreff}\n\n${ml.text}`); return; }
+  }
+});
+async function copy(t){ try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch(e){ toast('Kopieren nicht möglich. Bitte Text markieren.'); } }
+$('#copymail').addEventListener('click', () => copy(TESTMAIL));
+$('#testmail').textContent = TESTMAIL;
+const rs = $('#role');
+rs.innerHTML = Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${k === state.role ? 'selected' : ''}>${esc(l)}</option>`).join('');
+rs.addEventListener('change', () => { state.role = rs.value; lsSet('lk_role', state.role); state.ui = {}; state.filter = 'me'; renderAll(); });
+
+renderAll();
+store.init();
+</script>

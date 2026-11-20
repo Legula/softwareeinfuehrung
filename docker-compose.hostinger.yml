@@ -1,0 +1,25 @@
+# Betrieb auf dem Hostinger-VPS hinter Traefik (HTTPS über Let's Encrypt).
+# Das Image wird direkt aus dem GitHub-Repository gebaut; ein Neuaufbau holt den aktuellen Stand von main.
+# Umgebungsvariablen (im Hostinger Docker Manager setzen, nicht ins Repository schreiben):
+#   TRAEFIK_HOST=<Hostname des Servers>
+#   BASIC_AUTH_USER=...   BASIC_AUTH_PASS=...
+services:
+  laufkarte:
+    build:
+      context: https://github.com/Legula/softwareeinfuehrung.git#main
+    restart: unless-stopped
+    environment:
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER}
+      - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
+      - TEST_MAIL=${TEST_MAIL:-}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${COMPOSE_PROJECT_NAME}.${TRAEFIK_HOST}`)
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=8080
+    volumes:
+      - laufkarte-daten:/data
+
+volumes:
+  laufkarte-daten:
