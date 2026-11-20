@@ -554,7 +554,7 @@ function worstVotum(f){
 }
 function auflagenListe(f){
   const out = [];
-  [['DSB', f.votum_dsb === 'auflagen' ? f.auflagen_dsb : ''], ['ISB', f.votum_isb === 'auflagen' ? f.auflagen_isb : ''],
+  [['{DSB}', f.votum_dsb === 'auflagen' ? f.auflagen_dsb : ''], ['{ISB}', f.votum_isb === 'auflagen' ? f.auflagen_isb : ''],
    ['{R013}', f.votum_013 === 'auflagen' ? f.stn_013 : ''], ['{R15}', f.votum_15 === 'auflagen' ? f.stn_15 : ''], ['{R15}', f.ergebnis === 'B' && f.it_ok === 'auflagen' ? f.it_ok_text : '']]
     .forEach(([w, t]) => (t || '').split('\n').map(s => s.trim()).filter(Boolean).forEach(s => out.push(w + ': ' + s)));
   return out;
