@@ -10,12 +10,11 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'vorgaenge.json');
 const FB_FILE = path.join(DATA_DIR, 'feedback.json');
+const CFG_FILE = path.join(DATA_DIR, 'config.json'); // Einstellungen (Bezeichnungen, Mailadressen); liegen nur im Daten-Volume
 const PUBLIC_DIR = path.join(__dirname, 'public');
 // Optionaler Passwortschutz (HTTP Basic Auth); leer = kein Schutz
 const AUTH_USER = process.env.BASIC_AUTH_USER || '';
 const AUTH_PASS = process.env.BASIC_AUTH_PASS || '';
-// Optionale Test-Mailadresse für das Mail-Protokoll (wird nur angezeigt, es wird nichts verschickt)
-const TEST_MAIL = process.env.TEST_MAIL || '';
 const MAX_BODY = 512 * 1024; // max. 512 KB je Vorgang
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -25,6 +24,8 @@ let items = {};
 try { items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { items = {}; }
 let feedback = {};
 try { feedback = JSON.parse(fs.readFileSync(FB_FILE, 'utf8')); } catch (e) { feedback = {}; }
+let config = null; // null = Standardwerte der Oberfläche
+try { config = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (e) { config = null; }
 let rev = Date.now();
 
 function persist(file, data) {
@@ -80,7 +81,17 @@ const server = http.createServer(async (req, res) => {
 
   // API: Liste aller Vorgänge
   if (url.pathname === '/api/vorgaenge' && req.method === 'GET') {
-    return send(res, 200, { rev, items, feedback, testmail: TEST_MAIL });
+    return send(res, 200, { rev, items, feedback, config });
+  }
+  // API: Einstellungen speichern
+  if (url.pathname === '/api/config') {
+    if (req.method !== 'PUT') return send(res, 405, { error: 'Methode nicht erlaubt' });
+    try {
+      const doc = JSON.parse(await readBody(req));
+      if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return send(res, 400, { error: 'ungültige Einstellungen' });
+      config = doc; persist(CFG_FILE, config);
+      return send(res, 200, { ok: true, rev });
+    } catch (e) { return send(res, 400, { error: 'ungültige Daten' }); }
   }
   // API: einzelnen Vorgang speichern oder löschen
   const m = url.pathname.match(/^\/api\/(vorgaenge|feedback)\/([^/]+)$/);

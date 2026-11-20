@@ -9,7 +9,6 @@ services:
     environment:
       - BASIC_AUTH_USER=${BASIC_AUTH_USER:-}
       - BASIC_AUTH_PASS=${BASIC_AUTH_PASS:-}
-      - TEST_MAIL=${TEST_MAIL:-}
     volumes:
       - laufkarte-daten:/data
 volumes:

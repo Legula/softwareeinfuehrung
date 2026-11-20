@@ -1,14 +1,16 @@
 # Laufkarte Softwareeinführung
 
 Klickbarer Prototyp der digitalen Laufkarte für Softwareeinführungen. Er dient als Vorlage für das spätere FormCycle-Formular.
-Alle Stellen (Antragsteller, 15/1, 01/3, 15, 11/2, DSB, ISB) bearbeiten denselben Vorgang nacheinander oder parallel.
+Alle Stellen (Antragsteller, IT, Digitalisierung, Organisation, Datenschutz, Informationssicherheit) bearbeiten denselben Vorgang nacheinander oder parallel.
 Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
-**Testmodus:** Alle Mails gehen an ein gemeinsames Test-Postfach (Platzhalter `testpostfach@example.org`, über die Umgebungsvariable `TEST_MAIL` änderbar). Im Prototyp werden Mails nur protokolliert und nicht verschickt.
+**Einstellungen:** Über den Knopf „Einstellungen“ lassen sich die Bezeichnungen aller Organisationseinheiten, ihre Mailadressen, zentrale Begriffe, die Frist je Station und der Testmodus ändern. Die Werte gelten für alle, die die Instanz nutzen. Sie liegen nur im Daten-Volume (`config.json`), nicht im Repository. Über „Einstellungen übertragen“ lassen sie sich als Text kopieren und in einer anderen Instanz einfügen.
 
-**Feedback:** Über „Feedback geben“ und den Knopf „Feedback“ an jedem Abschnitt hinterlassen Testende anonyme Rückmeldungen. Die „Feedback-Liste“ zeigt alle Einträge mit Status und kopiert sie als Text.
+**Testmodus:** Im Testmodus gehen alle Mails an eine einzige Adresse (Standard: Platzhalter `testpostfach@example.org`). Im Prototyp werden Mails nur protokolliert und nicht verschickt.
 
-**Anonym:** Das Repository enthält keine Namen, Mailadressen oder Serveradressen. Zugangsdaten und Hostnamen gehören nur in Umgebungsvariablen auf dem Server.
+**Feedback:** Über „Feedback geben“ und den Knopf „Feedback“ an jedem Abschnitt hinterlassen Testende Rückmeldungen, auf Wunsch mit Namen. Die „Feedback-Liste“ zeigt alle Einträge mit Status und kopiert sie als Text.
+
+**Keine Organisationsdaten im Repository:** Der Code enthält nur neutrale Standardbezeichnungen und keine echten Namen, Mailadressen oder Serveradressen. Zugangsdaten und Hostnamen gehören in Umgebungsvariablen auf dem Server, Bezeichnungen und Adressen in die Einstellungen.
 
 ## Start mit Docker
 
@@ -18,7 +20,7 @@ docker compose up -d --build
 ```
 
 Danach ist die Laufkarte unter `http://<server>:8080` erreichbar. Mit gesetztem `BASIC_AUTH_USER` fragt der Browser nach Benutzername und Passwort.
-Die Vorgänge liegen im Docker-Volume `laufkarte-daten` (Datei `vorgaenge.json`) und überstehen Updates.
+Vorgänge, Feedback und Einstellungen liegen im Docker-Volume `laufkarte-daten` (`vorgaenge.json`, `feedback.json`, `config.json`) und überstehen Updates.
 
 ## Betrieb auf dem Hostinger-VPS
 
@@ -37,7 +39,7 @@ node server.js              # Node 18 oder neuer, keine weiteren Pakete nötig
 | Datei | Inhalt |
 | --- | --- |
 | `public/index.html` | Die komplette Oberfläche: Felder, Abschnitte, Workflow-Logik und Mails |
-| `server.js` | Liefert die Oberfläche aus und speichert die Vorgänge über eine kleine API (`/api/vorgaenge`) |
+| `server.js` | Liefert die Oberfläche aus und speichert Vorgänge, Feedback und Einstellungen über eine kleine API (`/api/vorgaenge`, `/api/feedback`, `/api/config`) |
 | `Dockerfile`, `docker-compose.yml` | Container-Betrieb |
 
 Die Oberfläche funktioniert auch ohne Server: Öffnet man `public/index.html` direkt im Browser, werden die Vorgänge nur lokal im Browser gespeichert.
@@ -48,7 +50,7 @@ Die Oberfläche funktioniert auch ohne Server: Öffnet man `public/index.html` d
 - **Abschnitte:** Konstante `SECS`.
 - **Workflow:** Konstanten `ST` und `OPEN` sowie die Funktion `transition()`, die auch die Mails erzeugt.
 - **Zustimmungen Dritter:** Funktion `consentItems()`.
-- **Fristen:** Konstante `FRIST_TAGE`. Test-Mailadresse: Umgebungsvariable `TEST_MAIL`.
+- **Bezeichnungen in Texten:** Platzhalter wie `{R15}` oder `{DSB}` werden bei der Anzeige durch die eingestellten Bezeichnungen ersetzt (Funktion `T()`, Standardwerte in `DEFAULT_CFG`). Neue Texte bitte mit Platzhaltern schreiben, nicht mit festen Namen.
 
 ## Hinweise
 
