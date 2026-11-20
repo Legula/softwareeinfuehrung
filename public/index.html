@@ -526,7 +526,7 @@ function transition(v){
       mail(v, 'FE', 'Eingangsbestätigung', 'ist eingegangen. Sie sehen den Stand jederzeit in der Laufkarte.'); break;
     case 'S1':
       if (f.strategie === 'nein'){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: passt nicht zur IT-Strategie', 'wurde von {R151} abgelehnt.')); }
-      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); }
+      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); if (f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als finanzrelevant gekennzeichnet.'); }
       else { go('N1'); if (f.fin === 'ja' && f.gonrw === undefined) f.gonrw = true; mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
       break;
     case 'V12':
@@ -534,11 +534,11 @@ function transition(v){
       if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.');
       mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', 'wurde von allen Stellen bearbeitet. Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
     case 'N1':
-      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 102 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
+      if (f.ergebnis === 'A'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
       else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren'); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
       break;
     case 'B1':
-      go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 102 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); break;
+      go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); if (f.gonrw || f.fin === 'ja') mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als prüfungspflichtig gekennzeichnet.'); break;
     case 'N2':
       if (worstVotum(f) === 'nein'){ go('N4'); mail(v, 'FE', 'Klärung nach Ablehnung'); ['R112','R013','R15'].forEach(r => mail(v, r, 'Zur Information: nicht zugestimmt', 'hat keine Zustimmung von {DSB} oder {ISB} erhalten.')); }
       else { go('N3'); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen'); mail(v, 'FE', 'Zur Information: Zustimmung {DSB} und {ISB}', 'hat die Zustimmung von {DSB} und {ISB} erhalten.'); }
