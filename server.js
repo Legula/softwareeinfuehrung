@@ -70,14 +70,15 @@ function readBody(req) {
 const ID_RE = /^[a-z0-9]{4,32}$/;
 
 const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+
+  // Gesundheitsprüfung für Docker (ohne Anmeldung, gibt keine Daten preis)
+  if (url.pathname === '/healthz') return send(res, 200, { ok: true });
+
   if (!authorized(req)) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Laufkarte", charset="UTF-8"' });
     return res.end('Anmeldung erforderlich');
   }
-  const url = new URL(req.url, 'http://localhost');
-
-  // Gesundheitsprüfung für Docker
-  if (url.pathname === '/healthz') return send(res, 200, { ok: true });
 
   // API: Liste aller Vorgänge
   if (url.pathname === '/api/vorgaenge' && req.method === 'GET') {

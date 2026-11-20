@@ -25,7 +25,7 @@ Vorgänge, Feedback und Einstellungen liegen im Docker-Volume `laufkarte-daten` 
 ## Betrieb auf dem Hostinger-VPS
 
 Auf dem VPS läuft die Laufkarte als Docker-Projekt `laufkarte` hinter Traefik mit HTTPS. Grundlage ist `docker-compose.hostinger.yml`.
-Das Image wird direkt aus dem Branch `main` dieses Repositorys gebaut. Nach Änderungen das Projekt im Hostinger Docker Manager neu bereitstellen.
+Der Container lädt beim Start den aktuellen Stand des Branches `main`. Nach Änderungen genügt ein Neustart des Projekts im Hostinger Docker Manager.
 Benutzer und Passwort stehen nur in den Umgebungsvariablen des Projekts auf dem VPS, nicht im Repository.
 
 ## Start ohne Docker

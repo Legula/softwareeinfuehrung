@@ -1,16 +1,31 @@
 # Betrieb auf dem Hostinger-VPS hinter Traefik (HTTPS über Let's Encrypt).
-# Das Image wird direkt aus dem GitHub-Repository gebaut; ein Neuaufbau holt den aktuellen Stand von main.
+# Der Container lädt beim Start den aktuellen Stand von main aus GitHub; ein Neustart des Projekts genügt als Update.
 # Umgebungsvariablen (im Hostinger Docker Manager setzen, nicht ins Repository schreiben):
 #   TRAEFIK_HOST=<Hostname des Servers>
 #   BASIC_AUTH_USER=...   BASIC_AUTH_PASS=...
 services:
   laufkarte:
-    build:
-      context: https://github.com/Legula/softwareeinfuehrung.git#main
+    image: node:20-alpine
     restart: unless-stopped
+    # Code holen, Daten-Volume dem Benutzer node geben, Server ohne Root-Rechte starten
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /app /data &&
+        wget -qO- https://github.com/Legula/softwareeinfuehrung/archive/refs/heads/main.tar.gz | tar xz -C /app --strip-components=1 &&
+        chown -R node:node /data &&
+        exec su node -s /bin/sh -c 'exec node /app/server.js'
     environment:
+      - PORT=8080
+      - DATA_DIR=/data
       - BASIC_AUTH_USER=${BASIC_AUTH_USER}
       - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      start_period: 20s
     labels:
       - traefik.enable=true
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${COMPOSE_PROJECT_NAME}.${TRAEFIK_HOST}`)
