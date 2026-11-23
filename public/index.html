@@ -294,7 +294,7 @@ const SECS = [
   {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'{DSB} und {ISB}, nach einem Auswahlprozess auch {R15}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
    intro:'{DSB} und {ISB} arbeiten parallel, gleichzeitig mit {R112}. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
   {n:7, title:'Organisation und Personalrat', oe:'{R112}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
-   intro:'Prüfung organisatorischer Auswirkungen und Steuerung der Beteiligung {PR} nach {BGA}. Läuft parallel zu den Stellungnahmen von {DSB} und {ISB}, damit {PR} frühzeitig beteiligt ist.'},
+   intro:'Prüfung organisatorischer Auswirkungen und Steuerung der Beteiligung {PR} nach {BGA}. Die organisatorische Prüfung läuft parallel zu {DSB} und {ISB}. {PR} wird beteiligt, sobald deren Stellungnahmen vorliegen; dann erhalten Sie eine Mail.'},
   {n:8, title:'Klärung nach Ablehnung', oe:'Antragsteller', when:v=>has(v.reached,'N4'),
    intro:'Mindestens eine Stelle hat nicht zugestimmt; welche, steht im Hinweis oben. Klären Sie die offenen Punkte mit dieser Stelle, legen Sie den Antrag überarbeitet erneut vor, holen Sie eine Entscheidung durch {KD} ein oder ziehen Sie ihn zurück.'},
   {n:9, title:'Zustimmungen und Zulassungen Dritter (vor der Inbetriebnahme)', oe:'Antragsteller', when:v=>v.status!=='S0',
@@ -430,15 +430,16 @@ const FIELDS = [
   // Abschnitt 7
   {id:'org_auswirk', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
   {id:'stn_112', sec:7, own:'R112', st:['V12','N2'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
-  {id:'pr_kontrolle', sec:7, t:'info', kind:'warn', l:'Der Antragsteller gibt an, dass eine Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich ist. „Keine Beteiligung“ steht deshalb nicht zur Auswahl.', show:f=>f.pbd!=='nein'&&!!f.ds_vor&&f.ds_vor[4]==='ja'},
-  {id:'pr_ki', sec:7, t:'info', l:'Die Software enthält KI-Funktionen. Bitte berücksichtigen Sie das bei der Art der Beteiligung {PR}.', show:f=>KI(f)},
-  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
+  {id:'pr_warten', sec:7, t:'info', gate:'prWait', l:'Die Beteiligung {PR} folgt, sobald {DSB} und {ISB} Stellung genommen haben. Die organisatorischen Auswirkungen können Sie schon jetzt erfassen und zwischenspeichern.'},
+  {id:'pr_kontrolle', sec:7, gate:'pr', t:'info', kind:'warn', l:'Der Antragsteller gibt an, dass eine Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich ist. „Keine Beteiligung“ steht deshalb nicht zur Auswahl.', show:f=>f.pbd!=='nein'&&!!f.ds_vor&&f.ds_vor[4]==='ja'},
+  {id:'pr_ki', sec:7, gate:'pr', t:'info', l:'Die Software enthält KI-Funktionen. Bitte berücksichtigen Sie das bei der Art der Beteiligung {PR}.', show:f=>KI(f)},
+  {id:'pr_stufe', sec:7, gate:'pr', own:'R112', st:['V12','N2'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
    opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach {BGA} erforderlich']],
    h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit {PR} abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
-  {id:'pr_datum', sec:7, own:'R112', st:['V12','N2'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
-  {id:'pr_ergebnis', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Ergebnis der Beteiligung {PR}', req:1, opts:[['ja','Zugestimmt'],['nein','Nicht zugestimmt']], show:f=>f.pr_stufe==='zustimmung',
+  {id:'pr_datum', sec:7, gate:'pr', own:'R112', st:['V12','N2'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
+  {id:'pr_ergebnis', sec:7, gate:'pr', own:'R112', st:['V12','N2'], t:'radio', l:'Ergebnis der Beteiligung {PR}', req:1, opts:[['ja','Zugestimmt'],['nein','Nicht zugestimmt']], show:f=>f.pr_stufe==='zustimmung',
    h:'Erst eintragen, wenn das Ergebnis vorliegt; bis dahin „Zwischenspeichern“. Die Freigabe wartet auf dieses Ergebnis. Bei „Nicht zugestimmt“ geht der Vorgang zur Klärung an den Antragsteller.'},
-  {id:'pr_begr', sec:7, own:'R112', st:['V12','N2'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
+  {id:'pr_begr', sec:7, gate:'pr', own:'R112', st:['V12','N2'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
   // Abschnitt 8
   {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, optShow:{kd:f=>!f.kl_pr}, opts:[['erneut','Überarbeitet erneut vorlegen (geht an die Stellen, die nicht zugestimmt haben)'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
   {id:'klaerung_doku', sec:8, own:'FE', st:['N4'], t:'textarea', l:'Dokumentation der Klärung', req:1},
@@ -622,9 +623,11 @@ function transition(v, from = v.status, freigabe = false){
     mail(v, 'KAT', 'Zur Information: freigegeben', 'ist freigegeben. Die Aufnahme ins Softwarekataster erfolgt mit der Bereitstellung.');
   };
   // Nicht zugestimmt: Klärung beim Antragsteller, egal in welchem Pfad
-  const neg = freigabe ? [] : rejectors(v, from);
+  // Nach einer Freigabe durch {KD} zählen nur noch neue Ablehnungen (z. B. {PR}), nicht die schon übergangenen
+  const kdFrei = freigabe || !!(v.kl && v.kl.kd && v.kl.from === from);
+  const neg = freigabe ? [] : rejectors(v, from).filter(r => !(kdFrei && v.kl.who.includes(r)));
   if (neg.length){
-    v.kl = {from, who: neg}; f.kl_pr = neg.includes('R112'); // fehlende Zustimmung des Personalrats kann die Leitung nicht ersetzen
+    v.kl = {from, who: neg, pending: v.open.filter(r => !v.done.includes(r))}; // pending: noch nicht fertige Stellen, z. B. {R112} f.kl_pr = neg.includes('R112'); // fehlende Zustimmung des Personalrats kann die Leitung nicht ersetzen
     ['klaerung','klaerung_doku','kd_entscheidung','kd_vermerk'].forEach(k => delete f[k]);
     go('N4');
     const namen = neg.map(r => r === 'R112' ? SHORT.PR : SHORT[r]).join(', ');
@@ -632,7 +635,7 @@ function transition(v, from = v.status, freigabe = false){
     [...new Set(['R112','R013','R15'])].filter(r => !neg.includes(r)).forEach(r => mail(v, r, 'Zur Information: nicht zugestimmt', 'hat keine Zustimmung erhalten von: ' + namen + '.'));
     return;
   }
-  const frei = freigabe ? ' (Freigabe {KD})' : '';
+  const frei = kdFrei ? ' (Freigabe {KD})' : '';
   switch (from){
     case 'S0':
       go('S1');
@@ -645,24 +648,28 @@ function transition(v, from = v.status, freigabe = false){
       else { go('N1'); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
       break;
     case 'V12':
-      freigeben(freigabe); break;
+      freigeben(kdFrei); break;
     case 'N1':
-      if (f.ergebnis !== 'B'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen' + frei); mail(v, 'FE', f.ergebnis === 'E' ? 'Zur Information: Nachnutzung eines vorhandenen Onlinedienstes' : 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB}, {ISB} und {R112} (parallel).'); }
+      if (f.ergebnis !== 'B'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); mail(v, 'R112', 'Organisatorische Auswirkungen prüfen' + frei); mail(v, 'FE', f.ergebnis === 'E' ? 'Zur Information: Nachnutzung eines vorhandenen Onlinedienstes' : 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB}, {ISB} und {R112} (parallel; {PR} folgt nach {DSB} und {ISB}).'); }
       else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren' + frei); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
       break;
     case 'B1':
       // nach dem Auswahlprozess bestätigt die IT zusätzlich das gewählte Produkt
-      go('N2'); v.open = ['DSB','ISB','R112','R15']; ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen'); mail(v, 'R15', 'Ausgewähltes Produkt technisch bestätigen', 'hat den Auswahlprozess abgeschlossen. Gewählt wurde: ' + (f.produkt_b || 'siehe Abschnitt 5') + '.'); break;
+      go('N2'); v.open = ['DSB','ISB','R112','R15']; ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); mail(v, 'R112', 'Organisatorische Auswirkungen prüfen'); mail(v, 'R15', 'Ausgewähltes Produkt technisch bestätigen', 'hat den Auswahlprozess abgeschlossen. Gewählt wurde: ' + (f.produkt_b || 'siehe Abschnitt 5') + '.'); break;
     case 'N2':
-      freigeben(freigabe); break;
+      freigeben(kdFrei); break;
     case 'N4': {
       const kl = v.kl || {from: 'N2', who: ['DSB','ISB']}; if (kl.from === 'N3') kl.from = 'N2';
       if (f.klaerung === 'erneut'){
         // zurück an die Station der Ablehnung, aber nur an die Stellen, die nicht zugestimmt haben
-        go(kl.from); v.open = kl.who.slice();
+        go(kl.from); v.open = [...new Set(kl.who.concat(kl.pending || []))];
         kl.who.forEach(r => mail(v, r, 'Erneute Vorlage nach Klärung', 'wurde überarbeitet erneut vorgelegt. Bitte prüfen Sie Ihr Votum.'));
       }
-      else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){ log(v, 'System', 'Freigabe durch {KD} trotz fehlender Zustimmung von ' + kl.who.map(r => SHORT[r]).join(', ')); transition(v, kl.from, true); }
+      else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){
+        log(v, 'System', 'Freigabe durch {KD} trotz fehlender Zustimmung von ' + kl.who.map(r => SHORT[r]).join(', '));
+        if ((kl.pending || []).length){ kl.kd = true; go(kl.from); v.open = kl.pending.slice(); nachErledigt(v); } // offene Stellen (z. B. {PR}) bleiben beteiligt
+        else transition(v, kl.from, true);
+      }
       else { go('S90'); ['R112','R013','R15','DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Vorgang beendet', 'wurde ohne Einführung beendet.')); }
       break; }
   }
@@ -688,7 +695,23 @@ function consentMissing(f){ return consentItems(f).filter(it => it.req && !conse
 // ===== Felder: Werte, Sichtbarkeit, Rechte, Prüfung =====
 function val(v, id){ const d = state.drafts[v.id]; return d && id in d ? d[id] : v.f[id]; }
 function curF(v){ return Object.assign({}, v.f, state.drafts[v.id] || {}); }
-function visible(fd, v){ return !fd.show || fd.show(curF(v)); }
+function visible(fd, v){
+  if (fd.gate === 'pr' && !prFrei(v)) return false;   // Personalrat erst nach den Stellungnahmen
+  if (fd.gate === 'prWait' && prFrei(v)) return false;
+  return !fd.show || fd.show(curF(v));
+}
+// {PR} wird erst beteiligt, wenn {DSB} und {ISB} in der laufenden Station Stellung genommen haben
+function prFrei(v){ return !['V12','N2'].includes(v.status) || (!isActive(v, 'DSB') && !isActive(v, 'ISB')); }
+// Nach jedem „Erledigt“: weiter, wenn alle fertig sind. Sonst: liegen {DSB} und {ISB} vor, {R112} zur Beteiligung {PR} auffordern
+// oder bei fehlender Zustimmung sofort in die Klärung, damit {PR} nicht über einen abgelehnten Antrag berät.
+function nachErledigt(v){
+  if (v.open.every(r => v.done.includes(r))) return transition(v);
+  if (!['V12','N2'].includes(v.status) || !prFrei(v) || !isActive(v, 'R112') || v.prInfo === v.since) return;
+  const ueber = v.kl && v.kl.kd && v.kl.from === v.status ? v.kl.who : []; // von {KD} bereits übergangene Ablehnungen
+  if (rejectors(v, v.status).some(r => r !== 'R112' && !ueber.includes(r))) return transition(v);
+  v.prInfo = v.since;
+  mail(v, 'R112', '{PR} beteiligen', 'hat die Stellungnahmen von {DSB} und {ISB} erhalten. Sie können jetzt {PR} beteiligen.');
+}
 function myOpenRf(v, role){ return (v.rfs || []).find(r => r.offen && r.to === role); }
 function rfFromMe(v, role){ return (v.rfs || []).find(r => r.offen && r.from === role); }
 function isActive(v, role){ return v.open.includes(role) && !v.done.includes(role); }
@@ -722,6 +745,7 @@ function validate(v, role){
     if (f.pbd !== 'nein' && f.ds_vor && f.ds_vor[0] === 'ja' && f.ko && f.ko[2] === 'ja') errs.push('Widerspruch: Sie geben an, dass Daten außerhalb von EU/EWR verarbeitet werden. Das KO-Kriterium „Verarbeitung in EU/EWR“ kann dann nicht „Erfüllt“ sein. Bitte eine der beiden Angaben ändern oder „Unklar“ wählen');
     if (KO_VALS(f).includes('nein')) errs.push('Ein KO-Kriterium ist nicht erfüllt. Bitte vorab mit {R013} klären');
   }
+  if (role === 'R112' && !prFrei(v)) errs.push('Die Beteiligung {PR} folgt erst, wenn {DSB} und {ISB} Stellung genommen haben. Bitte bis dahin zwischenspeichern');
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && !f.kd_entscheidung) errs.push('Entscheidung durch {KD} fehlt');
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && v.kl && v.kl.who.includes('R112')) errs.push('Die fehlende Zustimmung von {PR} kann nicht durch {KD} ersetzt werden. Bitte erneut vorlegen oder zurückziehen');
   return errs;
@@ -744,7 +768,7 @@ async function actForward(id){
   v.done.push(role);
   log(v, SHORT[role], 'Erledigt' + (v.status === 'S0' ? ' (Antrag abgesendet)' : ''), stationSummary(v, role));
   if (role === 'R112' && v.f.pr_stufe && v.f.pr_stufe !== 'keine') mail(v, 'PR', v.f.pr_stufe === 'zustimmung' ? 'Zustimmung nach {BGA}' : 'Anzeige nach {BGA}', v.f.pr_stufe === 'zustimmung' ? 'wird Ihnen zur Zustimmung vorgelegt.' : 'wird Ihnen angezeigt.');
-  if (v.open.every(r => v.done.includes(r))) transition(v);
+  nachErledigt(v);
   if (await commit(v)) toast(FINAL(v.status) ? 'Vorgang abgeschlossen' : 'Weitergeleitet');
 }
 function stationSummary(v, role){
@@ -843,7 +867,7 @@ async function actDemo(){
     v.done.push(role);
     log(v, SHORT[role], 'Erledigt' + (v.status === 'S0' ? ' (Antrag abgesendet)' : ''), stationSummary(v, role));
     if (role === 'R112' && f.pr_stufe && f.pr_stufe !== 'keine') mail(v, 'PR', 'Zustimmung nach {BGA}', 'wird Ihnen zur Zustimmung vorgelegt.');
-    if (v.open.every(r => v.done.includes(r))) transition(v);
+    nachErledigt(v);
   };
   const frage = (from, to, text, antwort, hilfe) => {
     const r = {id: rid(), from, to, frage: text, ts: nowIso(), offen: true, hilfe: !!hilfe}; v.rfs.push(r);
@@ -874,14 +898,14 @@ async function actDemo(){
     // 5 Auswahlprozess
     weiter(8);
     erledigt('FE', {bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen, Hosting in Deutschland'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'},{p:'Produkt C', e:'Hosting außerhalb der EU, ausgeschieden'}], produkt_b:'Produkt A', vergabe_ok:true, doku_b:'Auswahlvermerk.pdf'});
-    // 6 und 7 Stellungnahmen und Organisation parallel, mit Rückfrage und erster Ablehnung
+    // 6 Stellungnahmen, Organisation parallel, mit Rückfrage und erster Ablehnung
     weiter(2);
     frage('DSB', 'FE', 'Werden bei der Buchung Angaben zum Anliegen erfasst, die Sozialdaten sein können?', 'Nur eine Auswahl aus festen Anliegen ohne Freitext. Keine Sozialdaten.');
     erledigt('DSB', {chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Kein Freitextfeld zum Anliegen.\nLöschung der Termindaten nach 90 Tagen.\nDer Assistent wird nicht mit unseren Daten trainiert.', anlage_dsb:'Stellungnahme_Datenschutz.pdf'});
     weiter(1);
     erledigt('R15', {it_ok:'ja'});
     weiter(1);
-    erledigt('R112', {org_auswirk:'ja', stn_112:'Telefonische Terminvergabe wird reduziert, Aufgaben verschieben sich in die Sachbearbeitung.', pr_stufe:'zustimmung', pr_datum: iso(), pr_ergebnis:'ja'});
+    f.org_auswirk = 'ja'; f.stn_112 = 'Telefonische Terminvergabe wird reduziert, Aufgaben verschieben sich in die Sachbearbeitung.'; log(v, SHORT.R112, 'Zwischengespeichert');
     erledigt('ISB', {chk_isb:q(4, 'ja', {2:'nein'}), votum_isb:'nein', empf_isb:'Der Anbieter hat keinen Sicherheitsnachweis vorgelegt. Bitte nachfordern.'});
     // 8 Klärung
     weiter(4);
@@ -892,6 +916,9 @@ async function actDemo(){
     log(v, SHORT.FE, 'Zustimmungen Dritter gepflegt', 'Verzeichniseintrag');
     weiter(1);
     erledigt('ISB', {chk_isb:q(4, 'ja'), votum_isb:'auflagen', auflagen_isb:'Bereichskonzept vor Produktivstart vorlegen.', empf_isb:'', anlage_isb:'Stellungnahme_Informationssicherheit.pdf'});
+    // 7 Personalrat, erst nach den Stellungnahmen
+    weiter(6);
+    erledigt('R112', {pr_stufe:'zustimmung', pr_datum: iso(), pr_ergebnis:'ja'});
     weiter(1); f.auflagen_ok = nowIso(); log(v, SHORT.FE, 'Auflagen zur Kenntnis genommen');
   } finally { clockOffset = 0; }
   if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'done'; renderAll(); toast('Abgeschlossener Demovorgang angelegt. Siehe auch Laufzettel und Protokoll.'); }
@@ -1092,7 +1119,7 @@ const GR_START = [
   ['Wer klärt „Unklar“?','Im Prototyp klärt {R151} unklare Angaben des Antragstellers. Alternativ {R013} oder je Frage die fachlich zuständige Stelle.'],
   ['Verbindlichkeit der Voten','Ist ein negatives Votum von {R013} oder {R15} bindend (Klärung wie im Prototyp) oder nur eine Empfehlung?'],
   ['Beteiligung {PR}','Sind die drei Stufen keine Beteiligung, Anzeige, Zustimmung so gewollt? Welches Verfahren gilt bei verweigerter Zustimmung?'],
-  ['Reihenfolge im Pfad Neueinführung','Umgesetzt: {R112} und {PR} laufen jetzt in beiden Wegen parallel zu {DSB} und {ISB}. Bitte bestätigen.'],
+  ['Reihenfolge im Pfad Neueinführung','Umgesetzt: {R112} prüft in beiden Wegen parallel zu {DSB} und {ISB}. {PR} wird beteiligt, sobald deren Stellungnahmen vorliegen. Bitte bestätigen.'],
   ['KO-Kriterien und Fragebögen','Die Listen sind Platzhalter. Wer liefert die endgültigen Fassungen, und bis wann?'],
   ['EfA-First','Gilt EfA-First verbindlich? Im Prototyp prüft {R013} bei Onlinediensten die Nachnutzung; eine Abweichung ist zu begründen.'],
   ['Fristen','Gelten 10 Arbeitstage je Station? Was passiert bei Überschreitung (Erinnerung, Eskalation an wen)?'],
@@ -1173,9 +1200,9 @@ const FLOW_NODES = [
   {k:'S1',  col:1, row:1, note:'legt den weiteren Weg fest und klärt Angaben mit „Unklar“'},
   {k:'S90', col:2, row:1, kind:'end', note:'bei Ablehnung in der Prüfung oder nach der Klärung'},
   {k:'N1',  col:0, row:2, note:'Methodik, Marktsicht, EfA-Prüfung, technische Anforderungen'},
-  {k:'V12', col:2, row:2, note:'einschließlich Beteiligung {PR}'},
+  {k:'V12', col:2, row:2, note:'{PR} wird beteiligt, sobald {DSB} und {ISB} vorliegen'},
   {k:'B1',  col:0, row:3, note:'nur wenn mehrere Produkte in Frage kommen'},
-  {k:'N2',  col:0, row:4, note:'einschließlich Beteiligung {PR}; nach einem Auswahlprozess bestätigt {R15} das gewählte Produkt'},
+  {k:'N2',  col:0, row:4, note:'{PR} wird beteiligt, sobald {DSB} und {ISB} vorliegen; nach einem Auswahlprozess bestätigt {R15} das gewählte Produkt'},
   {k:'S99', col:1, row:5, kind:'ok', title:'Freigegeben zur Beschaffung bzw. Nutzung', note:'Ende der Laufkarte, Protokoll für das DMS. Offene Pflichtpunkte Dritter gehen an {R15}, die vor der Bereitstellung prüft.'}
 ];
 const FLOW_KL = ['Wenn eine Stelle nicht zustimmt, klärt der Antragsteller das weitere Vorgehen:', '1. Überarbeitet erneut vorlegen: zurück an die Stelle, die nicht zugestimmt hat.', '2. Entscheidung durch {KD}: bei Freigabe geht es weiter. Eine fehlende Zustimmung {PR} wird dadurch nicht ersetzt.', '3. Zurückziehen oder Ablehnung: Ende ohne Einführung.'];
