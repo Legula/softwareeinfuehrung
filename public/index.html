@@ -210,7 +210,7 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
 <script>
 // ===== Konfiguration =====
 // Standardkonfiguration: neutrale Bezeichnungen, keine echten Adressen. Anpassbar über „Einstellungen“.
-const ROLE_INFO = {FE:'Meldet den Bedarf', R151:'Prüft, ob es schon eine Lösung gibt', R013:'Stellungnahme Methodik, Prozessbegleitung', R15:'Technische Stellungnahme, Bereitstellung', R112:'Organisation, steuert Personalratsbeteiligung', DSB:'Stellungnahme Datenschutz', ISB:'Stellungnahme Informationssicherheit', PR:'Beteiligung (nur lesend)', R141:'Programmprüfung (nur lesend)', KAT:'Pflege des Softwarekatasters (nur Mail)'};
+const ROLE_INFO = {FE:'Meldet den Bedarf', R151:'Prüft, ob es schon eine Lösung gibt', R013:'Stellungnahme Methodik, Prozessbegleitung', R15:'Technische Stellungnahme, Bereitstellung nach der Freigabe', R112:'Organisation, steuert Personalratsbeteiligung', DSB:'Stellungnahme Datenschutz', ISB:'Stellungnahme Informationssicherheit', PR:'Beteiligung (nur lesend)', R141:'Programmprüfung (nur lesend)', KAT:'Pflege des Softwarekatasters (nur Mail nach der Freigabe)'};
 const DEFAULT_CFG = {
   titel:'', testmodus:true, testmail:'testpostfach@example.org', frist:10,
   rollen:{FE:{label:'Antragsteller', mail:''}, R151:{label:'IT-Bestandsprüfung', mail:''}, R013:{label:'Digitalisierung', mail:''}, R15:{label:'IT', mail:''}, R112:{label:'Organisation', mail:''},
@@ -246,8 +246,19 @@ applyCfg(null);
 const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
 
 // Status: Bezeichnung und welche Stationen gleichzeitig zuständig sind
-const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', V3:'Bereitstellung', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahme', N3:'Organisation und {PR}', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Abgeschlossen, eingeführt'};
-const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], V3:['R15'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB'], N3:['R112'], N4:['FE'], S90:[], S99:[]};
+const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahmen', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Freigegeben'};
+const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB','R112'], N4:['FE'], S90:[], S99:[]};
+// Vorgänge aus älteren Ständen übernehmen: „Organisation und {PR}“ ist jetzt Teil der abschließenden Stellungnahmen,
+// die Laufkarte endet mit der Freigabe (keine eigene Station „Bereitstellung“ mehr)
+function migrate(v){
+  if (!v || typeof v !== 'object') return v;
+  v.reached = (v.reached || []).filter(s => s !== 'V3').map(s => s === 'N3' ? 'N2' : s).filter((s, i, a) => a.indexOf(s) === i);
+  if (v.kl && v.kl.from === 'N3') v.kl.from = 'N2';
+  if (v.status === 'N3'){ v.status = 'N2'; v.open = ['R112']; v.done = []; }
+  if (v.status === 'V3'){ v.status = 'S99'; v.open = []; v.done = []; if (!v.reached.includes('S99')) v.reached.push('S99'); }
+  return v;
+}
+const migAll = items => { Object.values(items || {}).forEach(migrate); return items || {}; };
 // Wirksame Angaben: „Unklar“ des Antragstellers wird durch die Klärung der Prüfstation ersetzt
 const itemOn = (fd, i, f) => !fd.itemShow || !fd.itemShow[i] || fd.itemShow[i](f); // Prüfpunkt i einer Liste relevant?
 const optOn = (fd, k, f) => !fd.optShow || !fd.optShow[k] || fd.optShow[k](f);       // Antwortoption k wählbar?
@@ -257,6 +268,8 @@ const KO_UNKLAR = f => KO_VALS(f).includes('unklar');
 const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
 const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
 const KI = f => (f.ki === 'unklar' ? f.ki_klar : f.ki) === 'ja'; // KI-Funktionen: Einordnung nach KI-Verordnung und Datenschutzprüfung
+// Vorhandene Software nur, wenn nichts Neues dazukommt: neue Schnittstelle, neues Modul, Wechsel der Betriebsart oder KI
+const NUR_NEU = f => has(f.art,'schnittstelle') || has(f.art,'betriebsart') || has(f.art,'modul') || KI(f);
 const ONLINE = f => f.online === 'ja' || f.online === 'unklar'; // Onlinedienst für Bürger oder Unternehmen: EfA-Prüfung nötig
 const PR_ABGELEHNT = f => f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'nein';
 const FINAL = s => s === 'S90' || s === 'S99';
@@ -277,17 +290,15 @@ const SECS = [
   {n:4, title:'Fortschreibung Neueinführung', oe:'{R013} und {R15}', when:v=>has(v.reached,'N1'),
    intro:'{R013} und {R15} bearbeiten ihre Teile parallel, gern gemeinsam mit dem Antragsteller. Die Stellungnahmen werden Bestandteil des Beschaffungsvorgangs.'},
   {n:5, title:'Auswahlprozess', oe:'Antragsteller', when:v=>has(v.reached,'B1'),
-   intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz.'},
+   intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz. Die Auswahl ersetzt kein Vergabeverfahren; stimmen Sie den Vergabeweg mit der Vergabestelle ab.'},
   {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'{DSB} und {ISB}, nach einem Auswahlprozess auch {R15}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
-   intro:'{DSB} und {ISB} arbeiten parallel. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
-  {n:7, title:'Organisation und Personalrat', oe:'{R112}', when:v=>has(v.reached,'V12')||has(v.reached,'N3'),
-   intro:'Prüfung organisatorischer Auswirkungen und Steuerung der Beteiligung {PR} nach {BGA}.'},
+   intro:'{DSB} und {ISB} arbeiten parallel, gleichzeitig mit {R112}. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
+  {n:7, title:'Organisation und Personalrat', oe:'{R112}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
+   intro:'Prüfung organisatorischer Auswirkungen und Steuerung der Beteiligung {PR} nach {BGA}. Läuft parallel zu den Stellungnahmen von {DSB} und {ISB}, damit {PR} frühzeitig beteiligt ist.'},
   {n:8, title:'Klärung nach Ablehnung', oe:'Antragsteller', when:v=>has(v.reached,'N4'),
    intro:'Mindestens eine Stelle hat nicht zugestimmt; welche, steht im Hinweis oben. Klären Sie die offenen Punkte mit dieser Stelle, legen Sie den Antrag überarbeitet erneut vor, holen Sie eine Entscheidung durch {KD} ein oder ziehen Sie ihn zurück.'},
-  {n:9, title:'Zustimmungen und Zulassungen Dritter', oe:'Antragsteller pflegt, {R15} prüft vor Bereitstellung', when:v=>v.status!=='S0',
-   intro:'Hier haken Sie Zustimmungen und Zulassungen ab, die außerhalb dieser Laufkarte erteilt werden. Pflichtpunkte ergeben sich automatisch aus Ihren Angaben und den Stellungnahmen. Sie können den Abschnitt jederzeit pflegen, unabhängig davon, wo die Laufkarte gerade liegt. {R15} kann die Bereitstellung erst bestätigen, wenn alle Pflichtpunkte erledigt sind.'},
-  {n:10, title:'Bereitstellung und Kataster', oe:'{R15}', when:v=>has(v.reached,'V3'),
-   intro:'Bereitstellung der Software und Aufnahme in das Softwarekataster.'}
+  {n:9, title:'Zustimmungen und Zulassungen Dritter (vor der Inbetriebnahme)', oe:'Antragsteller', when:v=>v.status!=='S0',
+   intro:'Hier haken Sie Zustimmungen und Zulassungen ab, die außerhalb dieser Laufkarte erteilt werden. Pflichtpunkte ergeben sich automatisch aus Ihren Angaben und den Stellungnahmen. Sie können den Abschnitt bis zur Freigabe jederzeit pflegen, unabhängig davon, wo die Laufkarte gerade liegt. Die Freigabe wartet nicht darauf: Viele Punkte (z. B. AVV) entstehen erst in der Beschaffung. Offene Pflichtpunkte stehen im Protokoll und gehen mit der Freigabe an {R15}, die vor der Bereitstellung prüft.'}
 ];
 
 // ===== Felder =====
@@ -346,7 +357,8 @@ const FIELDS = [
   {id:'chk_151', sec:3, own:'R151', st:['S1'], t:'checks', l:'Prüfschritte', req:'all', col:1, opts:[['kataster','Softwarekataster auf vorhandene Lösungen geprüft'],['lizenz','Lizenzlage geprüft'],['strategie','Abgleich mit der IT-Strategie erfolgt']]},
   {id:'strategie', sec:3, own:'R151', st:['S1'], t:'radio', l:'Passt das Vorhaben zur IT-Strategie?', req:1, opts:[['ja','Ja'],['nein','Nein, Ablehnung']]},
   {id:'strategie_begr', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Begründung der Ablehnung', req:1, show:f=>f.strategie==='nein'},
-  {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f),
+  {id:'nur_neu', sec:3, t:'info', l:'„Vorhandene Software nutzbar“ steht nicht zur Auswahl: Der Antrag enthält eine neue Schnittstelle, ein neues Modul, einen Wechsel der Betriebsart oder KI-Funktionen. Das prüfen {R013} und {R15} als Neueinführung.', show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f)&&NUR_NEU(f)},
+  {id:'verfahren', sec:3, own:'R151', st:['S1'], t:'radio', l:'Weiteres Verfahren', req:1, col:1, show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f), optShow:{vorhanden:f=>!NUR_NEU(f)},
    opts:[['vorhanden','Vorhandene Software ist unmittelbar nutzbar (Lizenzen vorhanden)'],['neu','Neueinführung erforderlich']]},
   {id:'sw_vorhanden', sec:3, own:'R151', st:['S1'], t:'text', l:'Vorhandene Software', req:1, show:f=>f.verfahren==='vorhanden'&&f.strategie==='ja'&&!KO_ABGELEHNT(f)},
   {id:'unklar_info', sec:3, t:'info', kind:'warn', l:'Der Antragsteller hat Angaben mit „Unklar“ beantwortet. Bitte klären Sie diese jetzt verbindlich, bei Bedarf per Rückfrage an {DSB}, {R141} oder den Antragsteller.', show:f=>f.pbd==='unklar'||f.fin==='unklar'||f.ki==='unklar'||KO_UNKLAR(f)},
@@ -359,6 +371,7 @@ const FIELDS = [
   {id:'ko_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: unklare KO-Kriterien', req:1, col:1, opts:[['ja','Alle unklaren Kriterien sind erfüllt'],['nein','Mindestens ein Kriterium ist nicht erfüllt (Ablehnung)']], show:f=>KO_UNKLAR(f)},
   {id:'ko_klar_doku', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Ergebnis der Klärung', req:1, show:f=>KO_UNKLAR(f),
    h:'Kurz festhalten, wie die unklaren Punkte geklärt wurden und mit wem.'},
+  {id:'gonrw', sec:3, own:'R151', st:['S1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f)&&!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. Gilt für beide Wege. {R141} wird automatisch informiert. Finanzrelevante Software ist immer prüfungspflichtig.'},
   {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
   // Abschnitt 4: {R013}
   {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU, itemShow:{4:f=>KI(f)},
@@ -376,8 +389,9 @@ const FIELDS = [
    opts:[['E','Nachnutzung: Der vorhandene Onlinedienst wird genutzt (kein Auswahlprozess)'],['A','A: Fachlich kommt nur eine Software in Frage'],['B','B: Mehrere Produkte kommen in Frage, Antragsteller führt Auswahl durch']],
    h:'Bei B beteiligt der Antragsteller die Stellen im Auswahlprozess selbst; danach folgt die abschließende Stellungnahme von {DSB} und {ISB}.'},
   {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software bzw. Dienst', req:1, show:f=>f.ergebnis==='A'||f.ergebnis==='E'},
-  {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle.', show:f=>f.ergebnis==='A'},
-  {id:'gonrw', sec:4, own:'R013', st:['N1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', show:f=>!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. {R141} wird automatisch informiert. Bei „finanzrelevant: Ja“ der FE vorbelegt.'},
+  {id:'alleinstellung', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Begründung, warum nur diese Software in Frage kommt', req:1, show:f=>f.ergebnis==='A',
+   h:'Wird für die Vergabe gebraucht, z. B. Anbindung an ein vorhandenes Fachverfahren, Vorgabe des Landes oder nur ein Anbieter am Markt. Gern gemeinsam mit dem Antragsteller.'},
+  {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle. Die Begründung oben gehört in den Vergabevermerk.', show:f=>f.ergebnis==='A'},
   // Abschnitt 4: IT
   {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU, itemShow:{2:f=>has(f.art,'schnittstelle')},
    items:['Betriebsart ist geklärt','Anmeldung über zentrale Benutzerverwaltung möglich','Schnittstellen sind beschrieben','Datensicherung und Wiederherstellung geregelt','Arbeitsplatz-Anforderungen erfüllt']},
@@ -391,7 +405,8 @@ const FIELDS = [
   {id:'bet_begr', sec:5, own:'FE', st:['B1'], t:'textarea', l:'Begründung für „nicht erforderlich“', req:1, show:f=>f.bet&&Object.values(f.bet).includes('nein')},
   {id:'produkte', sec:5, own:'FE', st:['B1'], t:'repeat', l:'Geprüfte Produkte und Ergebnis', req:1, min:2, h:'Mindestens zwei Produkte, je ein Satz zum Ergebnis.'},
   {id:'produkt_b', sec:5, own:'FE', st:['B1'], t:'text', l:'Ausgewählte Software', req:1},
-  {id:'vergabe_b', sec:5, t:'info', l:'Hinweis: Die Vergabe klären Sie bitte parallel mit der Vergabestelle.'},
+  {id:'vergabe_ok', sec:5, own:'FE', st:['B1'], t:'check', l:'Vergabeweg mit der Vergabestelle abgestimmt', req:1,
+   h:'Die Auswahl ersetzt kein Vergabeverfahren. Klären Sie mit der Vergabestelle, ob Ihre Auswahl als Markterkundung vor der Vergabe läuft oder schon Teil des Vergabeverfahrens ist.'},
   {id:'doku_b', sec:5, own:'FE', st:['B1'], t:'file', l:'Weitere Dokumentation (optional)'},
   // Abschnitt 6: {DSB}
   {id:'dsb_keine', sec:6, t:'info', l:'Nach den bisherigen Angaben werden keine personenbezogenen Daten verarbeitet. Die Prüfpunkte entfallen; bitte bestätigen Sie das kurz mit Ihrem Votum.', show:f=>PBD_NEIN(f)},
@@ -413,30 +428,25 @@ const FIELDS = [
    h:'Die technische Stellungnahme entstand vor der Auswahl. Bitte bestätigen, dass das gewählte Produkt die Anforderungen erfüllt.'},
   {id:'it_ok_text', sec:6, own:'R15', st:['N2'], t:'textarea', l:'Auflagen bzw. Begründung {R15}', req:1, show:f=>f.ergebnis==='B'&&!!f.it_ok&&f.it_ok!=='ja'},
   // Abschnitt 7
-  {id:'org_auswirk', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
-  {id:'stn_112', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
+  {id:'org_auswirk', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Organisatorische Auswirkungen', req:1, opts:[['nein','Keine'],['ja','Ja']]},
+  {id:'stn_112', sec:7, own:'R112', st:['V12','N2'], t:'textarea', l:'Stellungnahme {R112}', req:1, show:f=>f.org_auswirk==='ja'},
   {id:'pr_kontrolle', sec:7, t:'info', kind:'warn', l:'Der Antragsteller gibt an, dass eine Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich ist. „Keine Beteiligung“ steht deshalb nicht zur Auswahl.', show:f=>f.pbd!=='nein'&&!!f.ds_vor&&f.ds_vor[4]==='ja'},
   {id:'pr_ki', sec:7, t:'info', l:'Die Software enthält KI-Funktionen. Bitte berücksichtigen Sie das bei der Art der Beteiligung {PR}.', show:f=>KI(f)},
-  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
+  {id:'pr_stufe', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Art der Beteiligung {PR}', req:1, col:1, optShow:{keine:f=>!(f.pbd!=='nein'&&f.ds_vor&&f.ds_vor[4]==='ja')},
    opts:[['keine','Keine (z. B. Test ohne Personaldaten)'],['anzeige','Anzeige (Bagatelle oder Mitnutzung eines schon mitbestimmten Verfahrens)'],['zustimmung','Zustimmung nach {BGA} erforderlich']],
    h:'Abgestufte Beteiligung nach dem Vorbild anderer IT-Rahmendienstvereinbarungen; mit {PR} abzustimmen. Ist ein Kriterium für Anzeige nicht sicher erfüllt, gilt Zustimmung.'},
-  {id:'pr_datum', sec:7, own:'R112', st:['V12','N3'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
-  {id:'pr_ergebnis', sec:7, own:'R112', st:['V12','N3'], t:'radio', l:'Ergebnis der Beteiligung {PR}', req:1, opts:[['ja','Zugestimmt'],['nein','Nicht zugestimmt']], show:f=>f.pr_stufe==='zustimmung',
-   h:'Erst eintragen, wenn das Ergebnis vorliegt; bis dahin „Zwischenspeichern“. Bei „Nicht zugestimmt“ geht der Vorgang zur Klärung an den Antragsteller.'},
-  {id:'pr_begr', sec:7, own:'R112', st:['V12','N3'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
+  {id:'pr_datum', sec:7, own:'R112', st:['V12','N2'], t:'date', l:'{PR}-Beteiligung abgeschlossen am', req:1, show:f=>f.pr_stufe==='anzeige'||f.pr_stufe==='zustimmung'},
+  {id:'pr_ergebnis', sec:7, own:'R112', st:['V12','N2'], t:'radio', l:'Ergebnis der Beteiligung {PR}', req:1, opts:[['ja','Zugestimmt'],['nein','Nicht zugestimmt']], show:f=>f.pr_stufe==='zustimmung',
+   h:'Erst eintragen, wenn das Ergebnis vorliegt; bis dahin „Zwischenspeichern“. Die Freigabe wartet auf dieses Ergebnis. Bei „Nicht zugestimmt“ geht der Vorgang zur Klärung an den Antragsteller.'},
+  {id:'pr_begr', sec:7, own:'R112', st:['V12','N2'], t:'textarea', l:'Gründe {PR}', req:1, show:f=>PR_ABGELEHNT(f)},
   // Abschnitt 8
   {id:'klaerung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Weiteres Vorgehen', req:1, col:1, optShow:{kd:f=>!f.kl_pr}, opts:[['erneut','Überarbeitet erneut vorlegen (geht an die Stellen, die nicht zugestimmt haben)'],['kd','Entscheidung durch {KD} einholen'],['zurueck','Antrag zurückziehen']]},
   {id:'klaerung_doku', sec:8, own:'FE', st:['N4'], t:'textarea', l:'Dokumentation der Klärung', req:1},
   {id:'kd_entscheidung', sec:8, own:'FE', st:['N4'], t:'radio', l:'Entscheidung durch {KD}', req:1, opts:[['freigabe','Freigabe'],['ablehnung','Ablehnung']], show:f=>f.klaerung==='kd'},
   {id:'kd_vermerk', sec:8, own:'FE', st:['N4'], t:'file', l:'Vermerk {KD} (optional)', show:f=>f.klaerung==='kd'},
   // Abschnitt 9: Zustimmungen Dritter (begleitend, nicht an eine Station gebunden)
-  {id:'zust', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'consent', l:'Zustimmungen und Zulassungen'},
-  {id:'zust_weitere', sec:9, own:'FE', editors:['FE','R15'], anytime:1, t:'repeat', rows:1, ph:['Weitere Zustimmung (z. B. Fachaufsicht)','Erteilt am / Aktenzeichen'], l:'Weitere Zustimmungen (optional)'},
-  // Abschnitt 10
-  {id:'bereitstellung', sec:10, own:'R15', st:['V3'], t:'radio', l:'Bereitstellung durch', req:1, col:1, optShow:{saas:f=>has(f.art,'saas')||has(f.art,'betriebsart'), entfaellt:f=>has(f.art,'portal')}, opts:[['15','{R15}'],['saas','SaaS-Anbieter (Zugang eingerichtet)'],['entfaellt','Entfällt (Portalnutzung Dritter)']]},
-  {id:'bereit_am', sec:10, own:'R15', st:['V3'], t:'date', l:'Bereitgestellt am', req:1},
-  {id:'kataster', sec:10, own:'R15', st:['V3'], t:'check', l:'In das Softwarekataster aufgenommen', req:1},
-  {id:'kataster_id', sec:10, own:'R15', st:['V3'], t:'text', l:'Kataster-Nummer (optional)'}
+  {id:'zust', sec:9, own:'FE', editors:['FE'], anytime:1, t:'consent', l:'Zustimmungen und Zulassungen'},
+  {id:'zust_weitere', sec:9, own:'FE', editors:['FE'], anytime:1, t:'repeat', rows:1, ph:['Weitere Zustimmung (z. B. Fachaufsicht)','Erteilt am / Aktenzeichen'], l:'Weitere Zustimmungen (optional)'}
 ];
 
 // ===== Hilfsfunktionen =====
@@ -469,7 +479,7 @@ const store = {
     try {
       const r = await fetch('api/vorgaenge', {cache:'no-store'});
       if (r.ok && (r.headers.get('content-type') || '').includes('json')){
-        const d = await r.json(); this.api = true; this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; state.mode = 'server'; $('#gropen').hidden = !d.gremium;
+        const d = await r.json(); this.api = true; this.rev = d.rev; state.items = migAll(d.items); state.fb = d.feedback || {}; state.mode = 'server'; $('#gropen').hidden = !d.gremium;
         applyCfg(d.config); syncHead();
         $('#storeinfo').textContent = 'Vorgänge werden auf dem Server gespeichert und sind für alle Testenden sichtbar.';
         renderAll();
@@ -485,7 +495,7 @@ const store = {
       this.db.collection('vorgaenge').onSnapshot(snap => {
         if (!snap.metadata.fromCache) clearTimeout(t);
         const items = {}; snap.docs.forEach(d => { if (d.exists) items[d.id] = d.data(); });
-        state.items = items; renderSoft();
+        state.items = migAll(items); renderSoft();
       }, err => { clearTimeout(t); $('#storeinfo').textContent = 'Geteilte Daten nicht verfügbar (' + err.code + ').'; });
       this.db.doc('config/main').onSnapshot(snap => { applyCfg(snap.exists ? snap.data() : null); syncHead(); renderSoft(); }, () => {});
       this.db.collection('feedback').onSnapshot(snap => {
@@ -494,7 +504,7 @@ const store = {
       }, () => {});
     } else {
       state.mode = 'lokal';
-      try { state.items = JSON.parse(lsGet('lk_items') || '{}'); } catch(e){ state.items = {}; }
+      try { state.items = migAll(JSON.parse(lsGet('lk_items') || '{}')); } catch(e){ state.items = {}; }
       try { state.fb = JSON.parse(lsGet('lk_fb') || '{}'); } catch(e){ state.fb = {}; }
       try { applyCfg(JSON.parse(lsGet('lk_cfg') || 'null')); } catch(e){ applyCfg(null); }
       syncHead();
@@ -506,7 +516,7 @@ const store = {
     try {
       const r = await fetch('api/vorgaenge', {cache:'no-store'}); if (!r.ok) return;
       const d = await r.json(); if (d.rev === this.rev) return;
-      this.rev = d.rev; state.items = d.items || {}; state.fb = d.feedback || {}; applyCfg(d.config); syncHead(); renderSoft();
+      this.rev = d.rev; state.items = migAll(d.items); state.fb = d.feedback || {}; applyCfg(d.config); syncHead(); renderSoft();
     } catch(e){}
   },
   async save(v){
@@ -591,7 +601,7 @@ function rejectors(v, from){
   if (from === 'N1'){ if (f.votum_013 === 'nein') r.push('R013'); if (f.votum_15 === 'nein') r.push('R15'); }
   if (from === 'V12' || from === 'N2'){ if (f.votum_dsb === 'nein') r.push('DSB'); if (f.votum_isb === 'nein') r.push('ISB'); }
   if (from === 'N2' && f.ergebnis === 'B' && f.it_ok === 'nein') r.push('R15');
-  if ((from === 'V12' || from === 'N3') && PR_ABGELEHNT(f)) r.push('R112');
+  if ((from === 'V12' || from === 'N2') && PR_ABGELEHNT(f)) r.push('R112');
   return r;
 }
 // Übergang, wenn alle Stationen des aktuellen Status erledigt sind.
@@ -600,7 +610,17 @@ function transition(v, from = v.status, freigabe = false){
   const f = v.f;
   const go = st => { enter(v, st); log(v, 'System', 'Weiter an: ' + ST[st]); };
   const rpaInfo = txt => { if (f.gonrw || FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', txt); };
-  const consentMail = () => { if (consentMissing(f).length) mail(v, 'FE', 'Zustimmungen Dritter nachweisen', 'kann erst bereitgestellt werden, wenn diese Zustimmungen abgehakt sind: ' + consentMissing(f).map(it => it.l).join(', ') + '.'); };
+  // Ende der Laufkarte: Freigabe zur Beschaffung bzw. zur Nutzung vorhandener Software. Offene Pflichtpunkte gehen an {R15}.
+  const freigeben = (frei) => {
+    go('S99');
+    const vorh = f.verfahren === 'vorhanden', offen = consentMissing(f).map(it => T(it.l)), af = auflagenListe(f);
+    const offenTxt = offen.length ? ' Vor der Inbetriebnahme müssen noch vorliegen: ' + offen.join(', ') + '.' : '';
+    const afTxt = af.length ? '\nAuflagen:\n' + af.map(a => '- ' + T(a)).join('\n') + '\n' : '';
+    mail(v, 'FE', vorh ? 'Freigabe zur Nutzung' : 'Freigabe zur Beschaffung', (frei ? 'wurde durch {KD} freigegeben.' : 'ist freigegeben.') + (vorh ? ' Die vorhandene Software kann genutzt werden; {R15} richtet den Zugang ein.' : ' Die Beschaffung kann beginnen (mit der Vergabestelle).') + offenTxt + ' Das Protokoll für die Ablage im DMS finden Sie im Reiter „Protokoll“.' + afTxt);
+    mail(v, 'R15', 'Zur Information: freigegeben, Bereitstellung vorbereiten', 'ist freigegeben' + (vorh ? '.' : ' und geht in die Beschaffung.') + ' Bitte vor der Bereitstellung prüfen, dass alle Pflichtpunkte vorliegen.' + (offen.length ? ' Noch offen: ' + offen.join(', ') + '.' : '') + afTxt);
+    mail(v, 'R013', 'Zur Information: freigegeben', 'ist freigegeben.');
+    mail(v, 'KAT', 'Zur Information: freigegeben', 'ist freigegeben. Die Aufnahme ins Softwarekataster erfolgt mit der Bereitstellung.');
+  };
   // Nicht zugestimmt: Klärung beim Antragsteller, egal in welchem Pfad
   const neg = freigabe ? [] : rejectors(v, from);
   if (neg.length){
@@ -621,26 +641,22 @@ function transition(v, from = v.status, freigabe = false){
     case 'S1':
       if (f.strategie === 'nein'){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: passt nicht zur IT-Strategie', 'wurde von {R151} abgelehnt.')); }
       else if (KO_ABGELEHNT(f)){ go('S90'); ['FE','R013','R112'].forEach(r => mail(v, r, 'Ablehnung: KO-Kriterium nicht erfüllt', 'wurde nach Klärung der KO-Kriterien abgelehnt.')); }
-      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); if (FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', 'ist als finanzrelevant gekennzeichnet.'); }
-      else { go('N1'); if (FIN(f) && f.gonrw === undefined) f.gonrw = true; mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
+      else if (f.verfahren === 'vorhanden'){ go('V12'); ['R112','DSB','ISB'].forEach(r => mail(v, r, 'Stellungnahme (vorhandene Software)')); mail(v, 'FE', 'Zur Information: vorhandene Software nutzbar', 'wird mit vorhandener Software umgesetzt.'); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); }
+      else { go('N1'); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'R013', 'Fortschreibung Methodik'); mail(v, 'R15', 'Fortschreibung technische Anforderungen'); mail(v, 'FE', 'Zur Information: Neueinführung', 'wird als Neueinführung bearbeitet. {R013} und {R15} melden sich für einen gemeinsamen Termin.'); }
       break;
     case 'V12':
-      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen' + frei); consentMail();
-      mail(v, 'FE', 'Rückmeldung mit Auflagen und Bereichskonzept', (freigabe ? 'wurde durch {KD} freigegeben.' : 'wurde von allen Stellen bearbeitet.') + ' Bitte beachten Sie die Auflagen und erstellen Sie das Bereichskonzept.'); break;
+      freigeben(freigabe); break;
     case 'N1':
-      if (f.ergebnis !== 'B'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); mail(v, 'FE', f.ergebnis === 'E' ? 'Zur Information: Nachnutzung eines vorhandenen Onlinedienstes' : 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB} und {ISB}.'); }
+      if (f.ergebnis !== 'B'){ go('N2'); ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme' + frei)); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen' + frei); mail(v, 'FE', f.ergebnis === 'E' ? 'Zur Information: Nachnutzung eines vorhandenen Onlinedienstes' : 'Zur Information: Ergebnis A', 'geht zur abschließenden Stellungnahme an {DSB}, {ISB} und {R112} (parallel).'); }
       else { go('B1'); mail(v, 'FE', 'Auswahlprozess durchführen und dokumentieren' + frei); ['DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Auswahlprozess startet', 'geht in einen Auswahlprozess mehrerer Produkte.')); }
       break;
     case 'B1':
       // nach dem Auswahlprozess bestätigt die IT zusätzlich das gewählte Produkt
-      go('N2'); v.open = ['DSB','ISB','R15']; ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); mail(v, 'R15', 'Ausgewähltes Produkt technisch bestätigen', 'hat den Auswahlprozess abgeschlossen. Gewählt wurde: ' + (f.produkt_b || 'siehe Abschnitt 5') + '.'); rpaInfo('ist als prüfungspflichtig gekennzeichnet.'); break;
+      go('N2'); v.open = ['DSB','ISB','R112','R15']; ['DSB','ISB'].forEach(r => mail(v, r, 'Abschließende Stellungnahme')); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen'); mail(v, 'R15', 'Ausgewähltes Produkt technisch bestätigen', 'hat den Auswahlprozess abgeschlossen. Gewählt wurde: ' + (f.produkt_b || 'siehe Abschnitt 5') + '.'); break;
     case 'N2':
-      go('N3'); mail(v, 'R112', 'Organisation prüfen, {PR} beteiligen' + frei); mail(v, 'FE', 'Zur Information: weiter an {R112}', freigabe ? 'wurde durch {KD} freigegeben.' : 'hat die Zustimmung von {DSB} und {ISB} erhalten.'); break;
-    case 'N3':
-      go('V3'); mail(v, 'R15', 'Software zur Verfügung stellen' + frei); consentMail();
-      mail(v, 'FE', 'Rückmeldung mit Auflagen', 'ist freigegeben. Bitte beachten Sie die Auflagen.'); break;
+      freigeben(freigabe); break;
     case 'N4': {
-      const kl = v.kl || {from: 'N2', who: ['DSB','ISB']};
+      const kl = v.kl || {from: 'N2', who: ['DSB','ISB']}; if (kl.from === 'N3') kl.from = 'N2';
       if (f.klaerung === 'erneut'){
         // zurück an die Station der Ablehnung, aber nur an die Stellen, die nicht zugestimmt haben
         go(kl.from); v.open = kl.who.slice();
@@ -649,8 +665,6 @@ function transition(v, from = v.status, freigabe = false){
       else if (f.klaerung === 'kd' && f.kd_entscheidung === 'freigabe'){ log(v, 'System', 'Freigabe durch {KD} trotz fehlender Zustimmung von ' + kl.who.map(r => SHORT[r]).join(', ')); transition(v, kl.from, true); }
       else { go('S90'); ['R112','R013','R15','DSB','ISB'].forEach(r => mail(v, r, 'Zur Information: Vorgang beendet', 'wurde ohne Einführung beendet.')); }
       break; }
-    case 'V3':
-      go('S99'); mail(v, 'FE', 'Software bereitgestellt', 'ist abgeschlossen. Die Software steht bereit.'); mail(v, 'R013', 'Zur Information: Einführung abgeschlossen', 'ist abgeschlossen.'); mail(v, 'KAT', 'Aufnahme ins Softwarekataster', 'ist abgeschlossen und wurde für das Kataster gemeldet.'); break;
   }
 }
 
@@ -664,7 +678,7 @@ function consentItems(f){
     {k:'avv', l:'Auftragsverarbeitungsvertrag abgeschlossen', rg:'Art. 28 DSGVO', req: dsb[2] === 'ja', why:'{DSB}: AVV erforderlich'},
     {k:'vvt', l:'Eintrag im Verzeichnis der Verarbeitungstätigkeiten', rg:'Art. 30 DSGVO', req: dsb[3] === 'ja', why:'{DSB}: VVT-Eintrag erforderlich'},
     {k:'dsfa', l:'Datenschutz-Folgenabschätzung abgeschlossen', rg:'Art. 35 DSGVO, § 24 DSG NRW', req: dsb[4] === 'ja', why:'{DSB}: DSFA erforderlich'},
-    {k:'bk', l:'Bereichskonzept bzw. Schutzbedarfsfeststellung vorgelegt', rg:'Auflage {ISB}, blockiert die Bereitstellung nicht', req:false, hint: isb[1] === 'ja' ? 'von {ISB} gefordert' : ''},
+    {k:'bk', l:'Bereichskonzept bzw. Schutzbedarfsfeststellung vorgelegt', rg:'Auflage {ISB}', req:false, hint: isb[1] === 'ja' ? 'von {ISB} gefordert' : ''},
     {k:'land', l:'Zustimmung von Land, Bund oder Fachaufsicht', rg:'nur falls vorgeschrieben', req:false, hint: f.anlass === 'vorgabe' ? 'Vorgabe von Land oder Bund angegeben' : ''}
   ];
 }
@@ -680,7 +694,7 @@ function rfFromMe(v, role){ return (v.rfs || []).find(r => r.offen && r.from ===
 function isActive(v, role){ return v.open.includes(role) && !v.done.includes(role); }
 function canEdit(fd, v){
   const role = state.role;
-  if (fd.anytime) return !state.readonly && !FINAL(v.status) && v.status !== 'S0' && (role === 'FE' || (role === 'R15' && v.status === 'V3'));
+  if (fd.anytime) return !state.readonly && !FINAL(v.status) && v.status !== 'S0' && role === 'FE';
   if (state.readonly || !fd.own || fd.own !== role || FINAL(v.status)) return false;
   if (isActive(v, role) && fd.st.includes(v.status)) return true;
   // Während einer Rückfrage darf die angefragte Stelle ihre bereits bearbeiteten Angaben ändern
@@ -708,7 +722,6 @@ function validate(v, role){
     if (f.pbd !== 'nein' && f.ds_vor && f.ds_vor[0] === 'ja' && f.ko && f.ko[2] === 'ja') errs.push('Widerspruch: Sie geben an, dass Daten außerhalb von EU/EWR verarbeitet werden. Das KO-Kriterium „Verarbeitung in EU/EWR“ kann dann nicht „Erfüllt“ sein. Bitte eine der beiden Angaben ändern oder „Unklar“ wählen');
     if (KO_VALS(f).includes('nein')) errs.push('Ein KO-Kriterium ist nicht erfüllt. Bitte vorab mit {R013} klären');
   }
-  if (v.status === 'V3' && role === 'R15') consentMissing(f).forEach(it => errs.push('Zustimmung Dritter fehlt: ' + it.l));
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && !f.kd_entscheidung) errs.push('Entscheidung durch {KD} fehlt');
   if (v.status === 'N4' && role === 'FE' && f.klaerung === 'kd' && v.kl && v.kl.who.includes('R112')) errs.push('Die fehlende Zustimmung von {PR} kann nicht durch {KD} ersetzt werden. Bitte erneut vorlegen oder zurückziehen');
   return errs;
@@ -739,7 +752,7 @@ function stationSummary(v, role){
   switch (role){
     case 'R151': return f.strategie === 'nein' ? 'Ablehnung IT-Strategie' : lab('verfahren', f.verfahren);
     case 'R013': return 'Votum: ' + lab('votum_013', f.votum_013) + ', Ergebnis ' + (f.ergebnis === 'E' ? 'Nachnutzung (EfA)' : f.ergebnis || '') + (ONLINE(f) && f.efa ? ', EfA-Prüfung: ' + lab('efa', f.efa) : '');
-    case 'R15': return v.status === 'V3' ? 'Bereitstellung: ' + lab('bereitstellung', f.bereitstellung) : 'Votum: ' + lab('votum_15', f.votum_15);
+    case 'R15': return v.status === 'N2' ? 'Technische Bestätigung: ' + lab('it_ok', f.it_ok) : 'Votum: ' + lab('votum_15', f.votum_15);
     case 'DSB': return 'Votum: ' + lab('votum_dsb', f.votum_dsb);
     case 'ISB': return 'Votum: ' + lab('votum_isb', f.votum_isb);
     case 'R112': return 'Org. Auswirkungen: ' + lab('org_auswirk', f.org_auswirk);
@@ -792,12 +805,11 @@ function demoWerte(){
     verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall telefonische Terminvergabe.',
     betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', online:'nein', ki:'nein', ki_zweck:'Assistent beantwortet Fragen zur Terminbuchung (Demo)', ki_klar:'nein', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
     chk_151:['kataster','lizenz','strategie'], strategie:'ja', verfahren:'neu', sw_vorhanden:'Vorhandene Demo-Software', pbd_klar:'ja', fin_klar:'nein', ko_klar:'ja', ko_klar_doku:'Mit dem Antragsteller geklärt (Demo).',
-    fb_013:q(5, 'ja'), efa:'keiner', efa_vermerk:'EfA-Marktplatz geprüft (Demo)', efa_abweichung:'Dienst deckt den Bedarf nicht (Demo).', stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
+    fb_013:q(5, 'ja'), efa:'keiner', efa_vermerk:'EfA-Marktplatz geprüft (Demo)', efa_abweichung:'Dienst deckt den Bedarf nicht (Demo).', alleinstellung:'Nur dieses Produkt bindet das vorhandene Fachverfahren an (Demo).', stn_013:'Ablauf gut beschrieben, Nutzen messbar (Demo).', votum_013:'ja', ergebnis:'A', produkt:'Produkt A (Demo)',
     fb_15:q(5, 'ja'), stn_15:'Technisch umsetzbar (Demo).', votum_15:'ja',
-    bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)',
+    bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)', vergabe_ok:true,
     chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
-    org_auswirk:'nein', pr_stufe:'anzeige', pr_datum: heute, pr_ergebnis:'ja', klaerung:'erneut', klaerung_doku:'Offene Punkte mit der Stelle geklärt (Demo).',
-    bereitstellung:'15', bereit_am: heute, kataster:true};
+    org_auswirk:'nein', pr_stufe:'anzeige', pr_datum: heute, pr_ergebnis:'ja', klaerung:'erneut', klaerung_doku:'Offene Punkte mit der Stelle geklärt (Demo).'};
 }
 function actFill(id){
   const v = state.items[id], role = state.role, werte = demoWerte(); if (!v) return;
@@ -861,29 +873,25 @@ async function actDemo(){
     erledigt('R15', {fb_15:q(5, 'ja'), stn_15:'Anmeldung muss über die zentrale Benutzerverwaltung laufen.\nKalenderschnittstelle nur über den freigegebenen Standard.', votum_15:'auflagen'});
     // 5 Auswahlprozess
     weiter(8);
-    erledigt('FE', {bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen, Hosting in Deutschland'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'},{p:'Produkt C', e:'Hosting außerhalb der EU, ausgeschieden'}], produkt_b:'Produkt A', doku_b:'Auswahlvermerk.pdf'});
-    // 6 Stellungnahmen, mit Rückfrage und erster Ablehnung
+    erledigt('FE', {bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen, Hosting in Deutschland'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'},{p:'Produkt C', e:'Hosting außerhalb der EU, ausgeschieden'}], produkt_b:'Produkt A', vergabe_ok:true, doku_b:'Auswahlvermerk.pdf'});
+    // 6 und 7 Stellungnahmen und Organisation parallel, mit Rückfrage und erster Ablehnung
     weiter(2);
     frage('DSB', 'FE', 'Werden bei der Buchung Angaben zum Anliegen erfasst, die Sozialdaten sein können?', 'Nur eine Auswahl aus festen Anliegen ohne Freitext. Keine Sozialdaten.');
     erledigt('DSB', {chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Kein Freitextfeld zum Anliegen.\nLöschung der Termindaten nach 90 Tagen.\nDer Assistent wird nicht mit unseren Daten trainiert.', anlage_dsb:'Stellungnahme_Datenschutz.pdf'});
     weiter(1);
     erledigt('R15', {it_ok:'ja'});
     weiter(1);
+    erledigt('R112', {org_auswirk:'ja', stn_112:'Telefonische Terminvergabe wird reduziert, Aufgaben verschieben sich in die Sachbearbeitung.', pr_stufe:'zustimmung', pr_datum: iso(), pr_ergebnis:'ja'});
     erledigt('ISB', {chk_isb:q(4, 'ja', {2:'nein'}), votum_isb:'nein', empf_isb:'Der Anbieter hat keinen Sicherheitsnachweis vorgelegt. Bitte nachfordern.'});
     // 8 Klärung
     weiter(4);
     erledigt('FE', {klaerung:'erneut', klaerung_doku:'Der Anbieter hat ein ISO-27001-Zertifikat nachgereicht. Mit der Informationssicherheit besprochen.'});
-    weiter(2);
+    // 9 Zustimmungen Dritter, soweit schon vorhanden (AVV folgt erst mit dem Vertrag)
+    weiter(1);
+    f.zust = {vvt:{ok:true, am: iso()}};
+    log(v, SHORT.FE, 'Zustimmungen Dritter gepflegt', 'Verzeichniseintrag');
+    weiter(1);
     erledigt('ISB', {chk_isb:q(4, 'ja'), votum_isb:'auflagen', auflagen_isb:'Bereichskonzept vor Produktivstart vorlegen.', empf_isb:'', anlage_isb:'Stellungnahme_Informationssicherheit.pdf'});
-    // 7 Organisation und Personalrat
-    weiter(3);
-    erledigt('R112', {org_auswirk:'ja', stn_112:'Telefonische Terminvergabe wird reduziert, Aufgaben verschieben sich in die Sachbearbeitung.', pr_stufe:'zustimmung', pr_datum: iso(), pr_ergebnis:'ja'});
-    // 9 Zustimmungen Dritter, 10 Bereitstellung
-    weiter(2);
-    f.zust = {avv:{ok:true, am: iso(), dok:'AVV_Produkt_A.pdf'}, vvt:{ok:true, am: iso()}, bk:{ok:true, am: iso(), dok:'Bereichskonzept.pdf'}};
-    log(v, SHORT.FE, 'Zustimmungen Dritter gepflegt', 'AVV, Verzeichniseintrag, Bereichskonzept');
-    weiter(2);
-    erledigt('R15', {bereitstellung:'saas', bereit_am: iso(), kataster:true, kataster_id:'DEMO-0001'});
     weiter(1); f.auflagen_ok = nowIso(); log(v, SHORT.FE, 'Auflagen zur Kenntnis genommen');
   } finally { clockOffset = 0; }
   if (await store.save(v)){ state.sel = v.id; state.tab = 'karte'; state.filter = 'done'; renderAll(); toast('Abgeschlossener Demovorgang angelegt. Siehe auch Laufzettel und Protokoll.'); }
@@ -926,15 +934,14 @@ function renderList(){
 function stations(v){
   const f = v.f, r = v.reached, s = [{k:'S0', l:'Antrag', o:'Antragsteller'}, {k:'S1', l:'Prüfung', o:'{R151}'}];
   if (f.strategie === 'nein'){}
-  else if (f.verfahren === 'vorhanden') s.push({k:'V12', l:'Org. + {DSB}/{ISB}', o:'{R112} · {DSB} · {ISB}'}, {k:'V3', l:'Bereitstellung', o:'{R15}'});
+  else if (f.verfahren === 'vorhanden'){ s.push({k:'V12', l:'Org. + {DSB}/{ISB}', o:'{R112} · {DSB} · {ISB}'}); if (r.includes('N4')) s.push({k:'N4', l:'Klärung', o:'Antragsteller'}); }
   else if (f.verfahren === 'neu'){
     s.push({k:'N1', l:'Fortschreibung', o:'{R013} · {R15}'});
     if (f.ergebnis === 'B' || r.includes('B1')) s.push({k:'B1', l:'Auswahl', o:'Antragsteller'});
-    s.push({k:'N2', l:'Stellungnahme', o:'{DSB} · {ISB}'});
+    s.push({k:'N2', l:'Stellungnahmen + {PR}', o:'{DSB} · {ISB} · {R112}'});
     if (r.includes('N4')) s.push({k:'N4', l:'Klärung', o:'Antragsteller'});
-    s.push({k:'N3', l:'Org. + {PR}', o:'{R112}'}, {k:'V3', l:'Bereitstellung', o:'{R15}'});
   } else s.push({k:'?', l:'Weg folgt nach Prüfung', o:''});
-  s.push(v.status === 'S90' ? {k:'S90', l:'Ende ohne Einführung', o:''} : {k:'S99', l:'Abschluss + Kataster', o:''});
+  s.push(v.status === 'S90' ? {k:'S90', l:'Ende ohne Einführung', o:''} : {k:'S99', l:'Freigabe + Protokoll', o:''});
   return s.map(x => Object.assign(x, {cls: x.k === v.status ? (x.k === 'S90' ? 'end' : FINAL(x.k) ? 'done' : 'now') : r.includes(x.k) ? 'done' : ''}));
 }
 function optsHtml(fd, x, ed, multi, f = {}){
@@ -1085,7 +1092,7 @@ const GR_START = [
   ['Wer klärt „Unklar“?','Im Prototyp klärt {R151} unklare Angaben des Antragstellers. Alternativ {R013} oder je Frage die fachlich zuständige Stelle.'],
   ['Verbindlichkeit der Voten','Ist ein negatives Votum von {R013} oder {R15} bindend (Klärung wie im Prototyp) oder nur eine Empfehlung?'],
   ['Beteiligung {PR}','Sind die drei Stufen keine Beteiligung, Anzeige, Zustimmung so gewollt? Welches Verfahren gilt bei verweigerter Zustimmung?'],
-  ['Reihenfolge im Pfad Neueinführung','{R112} und {PR} folgen erst nach {DSB} und {ISB}. Soll das parallel laufen wie im Pfad „vorhandene Software“?'],
+  ['Reihenfolge im Pfad Neueinführung','Umgesetzt: {R112} und {PR} laufen jetzt in beiden Wegen parallel zu {DSB} und {ISB}. Bitte bestätigen.'],
   ['KO-Kriterien und Fragebögen','Die Listen sind Platzhalter. Wer liefert die endgültigen Fassungen, und bis wann?'],
   ['EfA-First','Gilt EfA-First verbindlich? Im Prototyp prüft {R013} bei Onlinediensten die Nachnutzung; eine Abweichung ist zu begründen.'],
   ['Fristen','Gelten 10 Arbeitstage je Station? Was passiert bei Überschreitung (Erinnerung, Eskalation an wen)?'],
@@ -1094,6 +1101,8 @@ const GR_START = [
   ['Rechtsgrundlage Programmprüfung','§ 104 Abs. 1 Nr. 3 GO NRW statt § 102 wie in der Vorlage. Bitte bestätigen.'],
   ['Technische Umsetzung','Mit welchem System wird der abgestimmte Ablauf später umgesetzt, und wer prüft die Machbarkeit?'],
   ['Erneute Auslösung des Ablaufs','Wann lösen ein Versionswechsel, ein neues Modul oder ein Herstellerwechsel den Ablauf erneut aus, und wann genügt eine Anzeige?','erneut'],
+  ['Produktauswahl und Vergabe','Kommen mehrere Produkte in Frage, wählt der Antragsteller eines aus, bevor vergeben ist, und {DSB} und {ISB} nehmen zu diesem Produkt Stellung. Ist diese Auswahl eine Markterkundung vor der Vergabe oder schon Teil des Vergabeverfahrens? Genügt bei nur einer Software die Begründung der Alleinstellung durch {R013} für den Vergabevermerk? Bitte mit der Vergabestelle klären.','vergabe'],
+  ['Ende der Laufkarte und Bereitstellung','Die Laufkarte endet jetzt mit der Freigabe zur Beschaffung bzw. Nutzung. Pflichtpunkte Dritter (z. B. AVV, Programmprüfung, GPA-Zulassung) entstehen oft erst in der Beschaffung und gehen offen an {R15}. Soll die Bereitstellung durch {R15} mit Prüfung dieser Punkte als kurzer Schlussschritt ohne Frist in die Laufkarte zurück, oder läuft sie außerhalb? Wer stellt vor der Inbetriebnahme sicher, dass alle Pflichtpunkte vorliegen?','ende'],
   ['KI-Funktionen','Im Prototyp ordnet {R013} KI-Funktionen nach der KI-Verordnung ein, {DSB} prüft die Datenverarbeitung. Ist das die richtige Zuständigkeit, und welche internen Regeln zur KI-Nutzung gelten?','ki']
 ];
 const grNeu = ([titel, text, key]) => Object.assign({id: rid(), titel: T(titel), text: T(text), ok: false, ergebnis: ''}, key ? {key} : {});
@@ -1166,10 +1175,8 @@ const FLOW_NODES = [
   {k:'N1',  col:0, row:2, note:'Methodik, Marktsicht, EfA-Prüfung, technische Anforderungen'},
   {k:'V12', col:2, row:2, note:'einschließlich Beteiligung {PR}'},
   {k:'B1',  col:0, row:3, note:'nur wenn mehrere Produkte in Frage kommen'},
-  {k:'N2',  col:0, row:4, note:'nach einem Auswahlprozess bestätigt {R15} das gewählte Produkt'},
-  {k:'N3',  col:0, row:5, note:'steuert die Beteiligung {PR}'},
-  {k:'V3',  col:1, row:6, note:'erst wenn alle Pflicht-Zustimmungen Dritter vorliegen'},
-  {k:'S99', col:1, row:7, kind:'ok', note:'Aufnahme ins Softwarekataster, Protokoll für das DMS'}
+  {k:'N2',  col:0, row:4, note:'einschließlich Beteiligung {PR}; nach einem Auswahlprozess bestätigt {R15} das gewählte Produkt'},
+  {k:'S99', col:1, row:5, kind:'ok', title:'Freigegeben zur Beschaffung bzw. Nutzung', note:'Ende der Laufkarte, Protokoll für das DMS. Offene Pflichtpunkte Dritter gehen an {R15}, die vor der Bereitstellung prüft.'}
 ];
 const FLOW_KL = ['Wenn eine Stelle nicht zustimmt, klärt der Antragsteller das weitere Vorgehen:', '1. Überarbeitet erneut vorlegen: zurück an die Stelle, die nicht zugestimmt hat.', '2. Entscheidung durch {KD}: bei Freigabe geht es weiter. Eine fehlende Zustimmung {PR} wird dadurch nicht ersetzt.', '3. Zurückziehen oder Ablehnung: Ende ohne Einführung.'];
 function flowWrap(text, n){ // Text in Zeilen mit höchstens n Zeichen teilen (SVG bricht nicht selbst um)
@@ -1187,9 +1194,10 @@ function flowSvg(pid = 'pf'){ // pid: eigene Pfeil-Kennung, damit die Druckfassu
   });
   // Zeilen von oben nach unten setzen; vor der Verzweigung etwas mehr Platz für die Beschriftung
   let y = 8; const rowY = [];
-  for (let r = 0; r <= 7; r++){ rowY[r] = y; y += Math.max(...FLOW_NODES.filter(n => n.row === r).map(n => nodes[n.k].h)) + (r === 1 ? 50 : GAP); }
+  const maxRow = Math.max(...FLOW_NODES.map(n => n.row));
+  for (let r = 0; r <= maxRow; r++){ rowY[r] = y; y += Math.max(...FLOW_NODES.filter(n => n.row === r).map(n => nodes[n.k].h)) + (r === 1 ? 50 : GAP); }
   Object.values(nodes).forEach(n => { n.y = rowY[n.row]; n.cx = n.x + W / 2; n.b = n.y + n.h; });
-  const N = nodes, kl = {x: X[1], y: rowY[2], b: N.N3.b}, H = N.S99.b + 8;
+  const N = nodes, kl = {x: X[1], y: rowY[2], b: N.N2.b}, H = N.S99.b + 8;
   const col = {'':['var(--surface)','var(--line)'], end:['var(--bad-soft)','var(--bad)'], ok:['var(--good-soft)','var(--good)'], kl:['var(--warn-soft)','var(--warn)']};
   const box = (bx, by, bh, kind) => `<rect x="${bx}" y="${by}" width="${W}" height="${bh}" rx="8" fill="${col[kind || ''][0]}" stroke="${col[kind || ''][1]}" stroke-width="1.5"/>`;
   const lines = (arr, cx, y0, lh, size, weight, fill) => arr.map((l, i) => `<text x="${cx}" y="${y0 + i * lh}" text-anchor="middle" font-size="${size}" font-weight="${weight}" fill="${fill}">${x(l)}</text>`).join('');
@@ -1198,18 +1206,17 @@ function flowSvg(pid = 'pf'){ // pid: eigene Pfeil-Kennung, damit die Druckfassu
     <marker id="${pid}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
     <marker id="${pid}w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/></marker></defs>`;
   // Verbindungen
-  const yv = N.S1.b + 16, yb = N.V3.y + 30;
+  const yv = N.S1.b + 16, yb = N.S99.y + 30;
   s += pfeil([[N.S0.cx, N.S0.b], [N.S1.cx, N.S1.y]]);
   s += pfeil([[N.S1.x + W, N.S1.y + 30], [N.S90.x, N.S90.y + 30]]);
   s += pfeil([[N.S1.cx, N.S1.b], [N.S1.cx, yv], [N.N1.cx, yv], [N.N1.cx, N.N1.y]]);
   s += pfeil([[N.S1.cx, yv], [N.V12.cx, yv], [N.V12.cx, N.V12.y]]);
   s += `<text x="${N.N1.cx + 8}" y="${N.N1.y - 9}" font-size="12" font-weight="600" fill="var(--fg)">Neueinführung</text><text x="${N.V12.cx - 8}" y="${N.V12.y - 9}" text-anchor="end" font-size="12" font-weight="600" fill="var(--fg)">Vorhandene Software nutzbar</text>`;
-  s += pfeil([[N.N1.cx, N.N1.b], [N.B1.cx, N.B1.y]]) + pfeil([[N.B1.cx, N.B1.b], [N.N2.cx, N.N2.y]]) + pfeil([[N.N2.cx, N.N2.b], [N.N3.cx, N.N3.y]]);
+  s += pfeil([[N.N1.cx, N.N1.b], [N.B1.cx, N.B1.y]]) + pfeil([[N.B1.cx, N.B1.b], [N.N2.cx, N.N2.y]]);
   s += pfeil([[N.N1.x, N.N1.y + 30], [22, N.N1.y + 30], [22, N.N2.y + 30], [N.N2.x, N.N2.y + 30]]);
   { const my = (N.N1.y + N.N2.y) / 2 + 30; s += `<text transform="translate(15 ${my}) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--muted)">nur ein Produkt oder Nachnutzung</text>`; }
-  s += pfeil([[N.N3.cx, N.N3.b], [N.N3.cx, yb], [N.V3.x, yb]]) + pfeil([[N.V12.cx, N.V12.b], [N.V12.cx, yb], [N.V3.x + W, yb]]);
-  s += pfeil([[N.V3.cx, N.V3.b], [N.S99.cx, N.S99.y]]);
-  ['N1','N2','N3'].forEach(k => { s += pfeil([[N[k].x + W, N[k].y + 30], [kl.x, N[k].y + 30]], true); });
+  s += pfeil([[N.N2.cx, N.N2.b], [N.N2.cx, yb], [N.S99.x, yb]]) + pfeil([[N.V12.cx, N.V12.b], [N.V12.cx, yb], [N.S99.x + W, yb]]);
+  ['N1','N2'].forEach(k => { s += pfeil([[N[k].x + W, N[k].y + 30], [kl.x, N[k].y + 30]], true); });
   s += pfeil([[N.V12.x, N.V12.y + 30], [kl.x + W, N.V12.y + 30]], true);
   // Stationen
   Object.values(N).forEach(n => {
@@ -1228,7 +1235,7 @@ function flowSvg(pid = 'pf'){ // pid: eigene Pfeil-Kennung, damit die Druckfassu
 function flowBody(pid){
   return `<div class="flowwrap">${flowSvg(pid)}</div>
     <p class="sub" style="margin:10px 0 0"><b>Lesehilfe:</b> Durchgezogene Pfeile zeigen den normalen Weg. Gestrichelte Pfeile führen in die Klärung, wenn eine Stelle nicht zustimmt. „(parallel)“ heißt, die Stellen arbeiten gleichzeitig; erst wenn alle fertig sind, geht es weiter.</p>
-    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{KAT}')} nach Abschluss. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt.</p>`;
+    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{R15}')} und ${esc('{KAT}')} nach der Freigabe. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt. Beschaffung und Bereitstellung folgen nach der Freigabe außerhalb der Laufkarte.</p>`;
 }
 function renderFlow(){
   $('#main').innerHTML = `<div class="head"><div><h2>Ablauf auf einer Seite</h2><div class="sub">Wer ist wann beteiligt? Die Grafik entsteht aus dem hinterlegten Ablauf und den Bezeichnungen aus den Einstellungen.</div></div>
@@ -1401,7 +1408,8 @@ function renderMain(){
     if (own) h += `<div class="banner info"><h4>Ihre ${own.hilfe ? 'Bitte um Hilfe' : 'Rückfrage'} an ${esc(SHORT[own.to])} ist offen</h4><p style="margin:0">${esc(own.frage)}</p></div>`;
     if (v.status === 'S99'){
       const af = auflagenListe(v.f);
-      h += `<div class="banner good"><h4>Software bereitgestellt am ${esc(fmtDateStr(v.f.bereit_am))}</h4><p style="margin:0">Aufgenommen in das Softwarekataster${v.f.kataster_id ? ' unter ' + esc(v.f.kataster_id) : ''}.</p></div>`;
+      const offen = consentMissing(v.f);
+      h += `<div class="banner good"><h4>${v.f.verfahren === 'vorhanden' ? 'Zur Nutzung freigegeben' : 'Zur Beschaffung freigegeben'} am ${fmt(v.since)}</h4><p style="margin:0">Die Laufkarte ist damit abgeschlossen. Das Protokoll für die Ablage im DMS steht im Reiter „Protokoll“. ${v.f.bereit_am ? 'Bereitgestellt am ' + esc(fmtDateStr(v.f.bereit_am)) + '.' : esc('{R15}') + ' stellt die Software nach der Beschaffung bereit und nimmt sie ins Softwarekataster auf.'}</p>${offen.length ? `<p style="margin:8px 0 0"><b>Vor der Inbetriebnahme noch offen:</b> ${offen.map(it => esc(it.l)).join(', ')}</p>` : ''}</div>`;
       if (af.length){
         h += `<div class="banner warn"><h4>Auflagen für den Antragsteller</h4><ul style="margin:4px 0 8px;padding-left:18px">${af.map(a => `<li>${esc(a)}</li>`).join('')}</ul>${v.f.auflagen_ok ? `<span class="chip ok">Zur Kenntnis genommen am ${fmt(v.f.auflagen_ok)}</span>` : role === 'FE' ? `<button type="button" class="primary" data-act="ack">Auflagen zur Kenntnis genommen</button>` : '<span class="chip">Kenntnisnahme durch den Antragsteller offen</span>'}</div>`;
       }
@@ -1409,8 +1417,6 @@ function renderMain(){
     if (v.status === 'N4' && v.kl) h += `<div class="banner warn"><h4>Nicht zugestimmt: ${v.kl.who.map(r => esc(r === 'R112' ? SHORT.PR : SHORT[r])).join(', ')}</h4><p style="margin:0">Die Begründung steht im Abschnitt der jeweiligen Stelle. ${role === 'FE' ? 'Wie es weitergeht, legen Sie in Abschnitt 8 fest.' : 'Der Antragsteller klärt das weitere Vorgehen.'}</p></div>`;
     if (v.status === 'S90') h += `<div class="banner bad"><h4>Vorgang ohne Einführung beendet</h4><p style="margin:0">Den Grund finden Sie im Laufzettel.</p></div>`;
     if (!FINAL(v.status) && !bei.includes(role) && !['PR','R141'].includes(role)) h += `<div class="banner info"><h4>Der Vorgang liegt gerade nicht bei ${esc(SHORT[role])}</h4><p style="margin:0">Sie sehen alle bisherigen Angaben schreibgeschützt. Zum Testen wechseln Sie oben die Rolle zu ${bei.map(r => esc(ROLES[r])).join(' oder ')}.</p></div>`;
-    if (v.status === 'V3' && role === 'R15' && consentMissing(v.f).length) h += `<div class="banner bad"><h4>Bereitstellung noch nicht möglich</h4><p style="margin:0">Offene Pflicht-Zustimmungen: ${consentMissing(v.f).map(it => esc(it.l)).join(', ')}. Der Antragsteller pflegt diese in Abschnitt 9; nutzen Sie bei Bedarf „Rückfrage an …“.</p></div>`;
-    if (v.status === 'V3' && role === 'R15' && auflagenListe(v.f).length) h += `<div class="banner warn"><h4>Auflagen beachten</h4><ul style="margin:4px 0 0;padding-left:18px">${auflagenListe(v.f).map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`;
     h += SECS.filter(s => s.when(v)).map(s => secHtml(s, v)).join('');
 
     // Aktionsleiste
@@ -1418,7 +1424,7 @@ function renderMain(){
     if (active || (role === 'FE' && !FINAL(v.status) && !state.readonly)){
       h += `<div class="actions">`;
       if (active){
-        const lbl = v.status === 'S0' ? 'Antrag absenden' : v.status === 'V3' ? 'Bereitstellung bestätigen' : 'Erledigt, weiterleiten';
+        const lbl = v.status === 'S0' ? 'Antrag absenden' : 'Erledigt, weiterleiten';
         h += `<button type="button" class="primary" data-act="forward" ${own && !own.hilfe ? 'disabled title="Erst nach der Antwort auf Ihre offene Anfrage"' : ''}>${lbl}</button>`;
         h += `<button type="button" data-act="save">Zwischenspeichern</button>`;
         h += `<button type="button" data-act="fill" title="Füllt die noch leeren Felder dieser Station mit Demodaten">Demodaten vorbelegen</button>`;
