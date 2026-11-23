@@ -136,6 +136,8 @@ table.log th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:
 #printarea{background:#fff;color:#111;padding:0;--surface:#fff;--surface-2:#f1f3f4;--line:#8a979b;--fg:#111;--muted:#444;--accent:#0d6b73;--accent-soft:#dcefef;--good:#2f7d3b;--good-soft:#e2f2e3;--warn:#9a6400;--warn-soft:#fbf0d8;--bad:#b3261e;--bad-soft:#fbe4e1}
 .flowwrap{overflow-x:auto;margin-top:12px}.flow{display:block;width:100%;min-width:620px;max-width:860px;height:auto;margin:0 auto;font-family:var(--font-body)}
 #printarea .flow{min-width:0;max-height:225mm;font-family:Arial,Helvetica,sans-serif}
+.flowdet{table-layout:fixed;min-width:640px}.flowdet td{font-size:.84rem}.flowdet .sub{font-size:.78rem}.flowdet th:nth-child(1){width:4%}.flowdet th:nth-child(2){width:19%}.flowdet th:nth-child(3){width:34%}.flowdet th:nth-child(4){width:25%}.flowdet th:nth-child(5){width:18%}.flowdet td{hyphens:auto;overflow-wrap:anywhere}
+#printarea .flowdetwrap{break-before:page;font-family:Arial,Helvetica,sans-serif}#printarea .flowdet{min-width:0}#printarea .flowdet td,#printarea .flowdet th{font-size:8pt;padding:2px 4px;line-height:1.3}#printarea .flowdet .sub{font-size:7.5pt}#printarea .flowdetwrap p.sub{font-size:8.5pt;line-height:1.35}#printarea .flowdet tr{break-inside:avoid}#printarea .tw{overflow:visible}
 @media print{body.printing>*:not(#printarea){display:none!important}body.printing{background:#fff}}
 #links a{color:var(--accent)}
 .drawer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;z-index:15;padding:16px;display:grid;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
@@ -1259,13 +1261,46 @@ function flowSvg(pid = 'pf'){ // pid: eigene Pfeil-Kennung, damit die Druckfassu
     FLOW_KL.forEach(a => { const z = flowWrap(a, 33); s += z.map((l, i) => `<text x="${kl.x + 12}" y="${ty + i * 14}" font-size="11" fill="var(--fg)">${x(l)}</text>`).join(''); ty += z.length * 14 + 8; }); }
   return s + '</svg>';
 }
+// ===== Ablauf im Detail: je Station wer, was, Ergebnis, Benachrichtigung =====
+// Platzhalter in geschweiften Klammern werden durch die eingestellten Bezeichnungen ersetzt.
+const FLOW_DETAIL = [
+  {nr:'1', k:'S0', wer:'Antragsteller', was:['Bedarf, Anlass und Verbesserung beschreiben, grob geschätzte Einsparung (VZÄ)','Art des Vorhabens (SaaS, On-Premise, Schnittstelle, Modul, Portal)','Onlinedienst, KI-Funktionen, personenbezogene Daten mit Datenschutz-Vorprüfung, Finanzrelevanz','KO-Kriterien; „Unklar“ ist erlaubt, „Nicht erfüllt“ sperrt das Absenden','Bei Bedarf „Hilfe anfordern“ (Standard: {R013})'],
+   weiter:['Absenden → Prüfung vorhandene Lösung'], mail:'{R151} (Aufgabe), {R112} und {R013} (Information), Antragsteller (Eingangsbestätigung)'},
+  {nr:'2', k:'S1', wer:'{R151}', was:['Softwarekataster, Lizenzlage und IT-Strategie prüfen','Angaben mit „Unklar“ verbindlich klären (Rückfrage an {DSB}, {R141} oder Antragsteller)','Prüfungspflicht durch {R141} festlegen (finanzrelevant: immer)'],
+   weiter:['Passt nicht zur IT-Strategie oder KO-Kriterium nicht erfüllt → Ende ohne Einführung','Vorhandene Software nutzbar → Organisation und Stellungnahmen (nur ohne neue Schnittstelle, neues Modul, Wechsel der Betriebsart oder KI)','Sonst → Fortschreibung (Neueinführung)'], mail:'je nach Weg die nächsten Stellen; {R141} bei Prüfungspflicht'},
+  {nr:'3', k:'N1', wer:'{R013} und {R15} (parallel)', was:['{R013}: Fragebogen Methodik, Stellungnahme, Votum; bei KI Einordnung nach KI-Verordnung','{R013}: EfA-Prüfung bei Onlinediensten (EfA-First, Abweichung begründen)','{R013}: Ergebnis der Marktsicht: Nachnutzung, A (nur eine Software, mit Begründung der Alleinstellung) oder B (mehrere Produkte)','{R15}: technische Anforderungen, Stellungnahme, Votum'],
+   weiter:['Nicht befürwortet → Klärung','Nachnutzung oder A → Abschließende Stellungnahmen','B → Auswahlprozess'], mail:'nächste Stellen; Antragsteller zur Information'},
+  {nr:'4', k:'B1', wer:'Antragsteller', when:'nur bei Ergebnis B', was:['Beteiligte Stellen informieren oder anhören und je Stelle dokumentieren','Mindestens zwei geprüfte Produkte mit Ergebnis, ausgewählte Software','Vergabeweg mit der Vergabestelle abgestimmt (Pflicht)'],
+   weiter:['→ Abschließende Stellungnahmen; {R15} bestätigt zusätzlich das gewählte Produkt'], mail:'{DSB}, {ISB}, {R112}, {R15}'},
+  {nr:'5', k:'N2', wer:'{DSB}, {ISB} und {R112}', also:'im Weg „vorhandene Software“ dieselbe Station ohne Fortschreibung (Organisation und Stellungnahmen)', was:['{DSB}: Prüfpunkte Datenschutz (AVV, Verzeichnis, DSFA, KI), Votum, Auflagen','{ISB}: Prüfpunkte IT-Sicherheit (Schutzbedarf, Bereichskonzept, Sicherheitsnachweis), Votum, Auflagen','{R112}: organisatorische Auswirkungen, parallel zu {DSB} und {ISB}','{R112}: Beteiligung {PR} (keine, Anzeige, Zustimmung) erst, wenn {DSB} und {ISB} Stellung genommen haben'],
+   weiter:['{DSB} oder {ISB} nicht zugestimmt → sofort Klärung, {PR} wird noch nicht beteiligt','{PR} nicht zugestimmt → Klärung (nicht durch {KD} ersetzbar)','Alle zugestimmt, auch unter Auflagen → Freigabe'], mail:'{R112} sobald {DSB} und {ISB} vorliegen; {PR} bei Anzeige oder Zustimmung'},
+  {nr:'K', k:'N4', wer:'Antragsteller', when:'nur wenn eine Stelle nicht zustimmt', was:['Offene Punkte mit der ablehnenden Stelle klären und dokumentieren'],
+   weiter:['Überarbeitet erneut vorlegen → zurück an die ablehnende Stelle und an noch offene Stellen','Entscheidung durch {KD}: Freigabe → weiter wie bei Zustimmung, {PR} bleibt beteiligt; Ablehnung → Ende','Zurückziehen → Ende ohne Einführung'], mail:'Antragsteller (Aufgabe), übrige Stellen zur Information'},
+  {nr:'6', k:'S99', wer:'Laufkarte endet', was:['Freigabe zur Beschaffung bzw. zur Nutzung vorhandener Software','Protokoll mit allen Angaben, Stellungnahmen, Auflagen und Laufzettel für das DMS','Antragsteller nimmt Auflagen zur Kenntnis'],
+   weiter:['Beschaffung (mit Vergabestelle), Bereitstellung und Aufnahme ins Softwarekataster folgen außerhalb der Laufkarte','Offene Pflichtpunkte Dritter prüft {R15} vor der Bereitstellung'], mail:'Antragsteller, {R15} (mit offenen Pflichtpunkten und Auflagen), {R013}, {KAT}'}
+];
+const FLOW_QUER = [
+  ['Rückfragen und Hilfe','Jede Stelle kann eine Rückfrage an eine andere Stelle stellen; der Antragsteller fordert Hilfe an. Die Laufkarte bleibt dabei an ihrem Platz.'],
+  ['Zustimmungen Dritter','Pflichtpunkte ergeben sich aus den Angaben und Stellungnahmen (z. B. AVV, Verzeichnis, DSFA, Programmprüfung, GPA-Zulassung, Zustimmung {PR}). Der Antragsteller hakt sie bis zur Freigabe ab; die Freigabe wartet nicht darauf.'],
+  ['Zurückziehen','Der Antragsteller kann den Antrag jederzeit mit Begründung zurückziehen; alle bisher Beteiligten werden informiert.'],
+  ['Fristen','Je Station gilt eine Frist; die Liegezeit ist in der Vorgangsliste sichtbar. Wiedervorlagen gibt es bewusst nicht.']
+];
+function flowDetail(){
+  const li = a => `<ul style="margin:0;padding-left:16px">${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  return `<h3 style="margin:18px 0 6px">Ablauf im Detail</h3>
+    <div class="tw" style="margin-top:0"><table class="log flowdet" lang="de"><thead><tr><th>Nr.</th><th>Station und zuständig</th><th>Was passiert</th><th>Ergebnis und weiter</th><th>Mail an</th></tr></thead><tbody>
+    ${FLOW_DETAIL.map(d => `<tr><td class="num"><b>${esc(d.nr)}</b></td><td><b>${esc(d.k === 'S99' ? 'Freigegeben' : ST[d.k])}</b><br>${esc(d.wer)}${d.when ? `<br><span class="sub">${esc(d.when)}</span>` : ''}${d.also ? `<br><span class="sub">${esc(d.also)}</span>` : ''}${d.k !== 'S99' ? `<br><span class="sub">Frist ${cfg.frist} Arbeitstage</span>` : ''}</td><td>${li(d.was)}</td><td>${li(d.weiter)}</td><td>${esc(d.mail)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <h3 style="margin:14px 0 6px">Gilt in jeder Station</h3>${FLOW_QUER.map(([t, x]) => `<p class="sub" style="margin:0 0 6px"><b>${esc(t)}:</b> ${esc(x)}</p>`).join('')}`;
+}
 function flowBody(pid){
   return `<div class="flowwrap">${flowSvg(pid)}</div>
     <p class="sub" style="margin:10px 0 0"><b>Lesehilfe:</b> Durchgezogene Pfeile zeigen den normalen Weg. Gestrichelte Pfeile führen in die Klärung, wenn eine Stelle nicht zustimmt. „(parallel)“ heißt, die Stellen arbeiten gleichzeitig; erst wenn alle fertig sind, geht es weiter.</p>
-    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{R15}')} und ${esc('{KAT}')} nach der Freigabe. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt. Beschaffung und Bereitstellung folgen nach der Freigabe außerhalb der Laufkarte.</p>`;
+    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{R15}')} und ${esc('{KAT}')} nach der Freigabe. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt. Beschaffung und Bereitstellung folgen nach der Freigabe außerhalb der Laufkarte.</p>
+    <div class="flowdetwrap" lang="de">${flowDetail()}</div>`;
 }
 function renderFlow(){
-  $('#main').innerHTML = `<div class="head"><div><h2>Ablauf auf einer Seite</h2><div class="sub">Wer ist wann beteiligt? Die Grafik entsteht aus dem hinterlegten Ablauf und den Bezeichnungen aus den Einstellungen.</div></div>
+  $('#main').innerHTML = `<div class="head"><div><h2>Ablauf</h2><div class="sub">Wer ist wann beteiligt? Oben der Überblick, darunter jede Station im Detail. Die Grafik entsteht aus dem hinterlegten Ablauf und den Bezeichnungen aus den Einstellungen.</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start"><button type="button" class="primary" data-act="flowprint">Drucken / als PDF speichern</button><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>${flowBody()}`;
 }
 // Gemeinsames Drucken für Protokoll und Ablaufgrafik
