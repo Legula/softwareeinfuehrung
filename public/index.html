@@ -230,7 +230,7 @@ function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte lege
   ['titel','testmail'].forEach(k => { if (typeof x[k] === 'string') c[k] = x[k]; });
   if (typeof x.testmodus === 'boolean') c.testmodus = x.testmodus;
   if (Number.isFinite(+x.frist) && +x.frist > 0) c.frist = Math.round(+x.frist);
-  Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); if (typeof r.funktion === 'string' && r.funktion.trim()) c.rollen[k].funktion = r.funktion.trim(); } });
+  Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); if (typeof r.funktion === 'string' && r.funktion.trim()) c.rollen[k].funktion = r.funktion.trim(); if (Number.isFinite(+r.frist) && +r.frist > 0 && String(r.frist).trim() !== '') c.rollen[k].frist = Math.round(+r.frist); } });
   Object.keys(c.begriffe).forEach(k => { if (x.begriffe && typeof x.begriffe[k] === 'string' && x.begriffe[k].trim()) c.begriffe[k] = x.begriffe[k].trim(); });
   // Links: nur http(s)-Adressen mit Titel übernehmen
   if (Array.isArray(x.links)) c.links = x.links.filter(l => l && typeof l.titel === 'string' && l.titel.trim() && typeof l.url === 'string' && urlOk(l.url.trim())).slice(0, MAX_LINKS).map(l => ({titel: l.titel.trim(), url: l.url.trim()}));
@@ -246,6 +246,9 @@ function applyCfg(x){
 function T(s){ return String(s ?? '').replace(/\{(FE|R151|R013|R15|R112|DSB|ISB|PR|R141|KAT|KD|DA|BGA)\}/g, (m, k) => SHORT[k] || cfg.begriffe[k] || m); }
 applyCfg(null);
 const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
+// Fristen: je Stelle einstellbar, sonst gilt die Standardfrist. Gezählt ab dem Eingang in der Station.
+const fristTage = r => (cfg.rollen[r] && +cfg.rollen[r].frist > 0) ? +cfg.rollen[r].frist : cfg.frist;
+const fristVon = (v, r) => addWorkdays(v.since, fristTage(r));
 
 // Status: Bezeichnung und welche Stationen gleichzeitig zuständig sind
 const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahmen', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Freigegeben'};
@@ -579,11 +582,11 @@ function mail(v, ziel, aufgabe, text){
   aufgabe = T(aufgabe); text = T(text || '');
   v.mails.push({ts: nowIso(), an: cfg.testmodus ? cfg.testmail : (echt || 'keine Adresse hinterlegt'), ziel: name + (echt ? ' <' + echt + '>' : ''),
     betreff: `${cfg.testmodus ? '[TEST → ' + name + '] ' : ''}${v.nr} ${vh}: ${aufgabe}`,
-    text: `Guten Tag,\n\nder Vorgang ${v.nr} „${vh}“ (${v.f.fe_oe || 'Antragsteller'}) ${text || 'liegt jetzt bei Ihnen.'}\nIhre Aufgabe: ${aufgabe}\n${FINAL(v.status) ? '' : 'Bitte bis: ' + fmt(v.frist) + '\n'}\nZum Vorgang: (Link zum Formular)\nBisheriger Verlauf: siehe Laufzettel im Formular.\n\nDiese Nachricht wurde automatisch erzeugt.`});
+    text: `Guten Tag,\n\nder Vorgang ${v.nr} „${vh}“ (${v.f.fe_oe || 'Antragsteller'}) ${text || 'liegt jetzt bei Ihnen.'}\nIhre Aufgabe: ${aufgabe}\n${FINAL(v.status) ? '' : 'Bitte bis: ' + fmt(v.open.includes(ziel) ? fristVon(v, ziel) : v.frist) + '\n'}\nZum Vorgang: (Link zum Formular)\nBisheriger Verlauf: siehe Laufzettel im Formular.\n\nDiese Nachricht wurde automatisch erzeugt.`});
 }
 function log(v, rolle, aktion, kommentar){ v.log.push({ts: nowIso(), rolle, aktion: T(aktion), kommentar: T(kommentar || '')}); }
 function enter(v, st){
-  v.status = st; v.open = OPEN[st].slice(); v.done = []; v.since = nowIso(); v.frist = addWorkdays(v.since, cfg.frist);
+  v.status = st; v.open = OPEN[st].slice(); v.done = []; v.since = nowIso(); v.frist = OPEN[st].length ? OPEN[st].map(r => fristVon(v, r)).sort().pop() : v.since;
   if (!v.reached.includes(st)) v.reached.push(st);
 }
 function worstVotum(f){
@@ -944,6 +947,8 @@ function liegtBei(v){
   return r;
 }
 function atMe(v){ return liegtBei(v).includes(state.role); }
+// Stellen, deren Frist in der aktuellen Station überschritten ist
+function ueberfaellig(v){ return FINAL(v.status) ? [] : liegtBei(v).filter(r => new Date(fristVon(v, r)) < new Date()); }
 function renderList(){
   const all = Object.values(state.items).sort((a, b) => (b.since || '').localeCompare(a.since || ''));
   const list = all.filter(v => state.filter === 'me' ? atMe(v) : state.filter === 'done' ? FINAL(v.status) : true);
@@ -952,9 +957,9 @@ function renderList(){
   if (!all.length){ el.innerHTML = `<div class="empty"><h3>Noch keine Vorgänge</h3><p>Legen Sie als Antragsteller einen Antrag an oder erzeugen Sie einen Beispielvorgang.</p></div>`; }
   else if (!list.length){ el.innerHTML = `<div class="empty"><p>${state.filter === 'me' ? 'Bei ' + esc(SHORT[state.role]) + ' liegt gerade nichts.' : 'Keine Vorgänge in dieser Ansicht.'}</p></div>`; }
   else el.innerHTML = list.map(v => {
-    const late = !FINAL(v.status) && new Date(v.frist) < new Date();
+    const late = ueberfaellig(v).length > 0;
     const chips = FINAL(v.status) ? `<span class="chip ${v.status === 'S99' ? 'ok' : 'late'}">${esc(ST[v.status])}</span>`
-      : `<span class="sub" style="${late ? 'color:var(--bad);font-weight:600' : ''}">Liegt ${seitText(v.since)} bei</span>` + liegtBei(v).map(r => `<span class="chip ${r === state.role ? 'me' : ''}">${esc(SHORT[r])}</span>`).join('') + (late ? '<span class="chip late">Frist überschritten</span>' : '');
+      : `<span class="sub" style="${late ? 'color:var(--bad);font-weight:600' : ''}">Liegt ${seitText(v.since)} bei</span>` + liegtBei(v).map(r => `<span class="chip ${r === state.role ? 'me' : ueberfaellig(v).includes(r) ? 'late' : ''}">${esc(SHORT[r])}</span>`).join('') + (late ? '<span class="chip late">Frist überschritten</span>' : '');
     return `<button type="button" class="item" data-open="${esc(v.id)}" aria-current="${v.id === state.sel}"><span class="nr">${esc(v.nr)}</span><span class="t">${esc(v.f.vorhaben || 'Neuer Antrag')}</span><span class="sub">${esc(ST[v.status])}</span><div class="chips" style="margin-top:4px">${chips}</div></button>`;
   }).join('');
   $('#newbtns').innerHTML = (state.role === 'FE' && !state.readonly ? `<button type="button" class="primary" data-act="new">Neuen Antrag anlegen</button>` : '') +
@@ -1071,19 +1076,19 @@ function syncHead(){
 }
 function renderCfg(){
   const c = state.ui.cfgDraft || cfg;
-  const row = k => `<tr><td><b>${esc(DEFAULT_CFG.rollen[k].label)}</b><div class="sub">Standard: ${esc(ROLE_INFO[k])}</div></td><td><input type="text" id="cfg_f_${k}" aria-label="Funktion ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].funktion || ROLE_INFO[k])}"></td><td><input type="text" id="cfg_l_${k}" aria-label="Bezeichnung ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].label)}"></td><td><input type="text" inputmode="email" id="cfg_m_${k}" aria-label="Mailadresse ${esc(DEFAULT_CFG.rollen[k].label)}" placeholder="postfach@example.org" value="${esc(c.rollen[k].mail)}"></td></tr>`;
+  const row = k => `<tr><td><b>${esc(DEFAULT_CFG.rollen[k].label)}</b><div class="sub">Standard: ${esc(ROLE_INFO[k])}</div></td><td><input type="text" id="cfg_f_${k}" aria-label="Funktion ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].funktion || ROLE_INFO[k])}"></td><td><input type="text" id="cfg_l_${k}" aria-label="Bezeichnung ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].label)}"></td><td><input type="text" inputmode="email" id="cfg_m_${k}" aria-label="Mailadresse ${esc(DEFAULT_CFG.rollen[k].label)}" placeholder="postfach@example.org" value="${esc(c.rollen[k].mail)}"></td><td>${ACTIVE_ROLES.includes(k) ? `<input type="text" inputmode="numeric" id="cfg_t_${k}" aria-label="Frist ${esc(DEFAULT_CFG.rollen[k].label)} in Arbeitstagen" placeholder="${esc(c.frist)}" value="${esc(c.rollen[k].frist || '')}" style="max-width:80px">` : '<span class="sub">–</span>'}</td></tr>`;
   const bl = {KD:'Leitung, die im Streitfall entscheidet', DA:'Dienstanweisung zur IT', BGA:'Vereinbarung zur Personalratsbeteiligung'};
   $('#main').innerHTML = `<div class="head"><div><h2>Einstellungen</h2><div class="sub">Gelten für alle, die diese Instanz nutzen. Sie werden nur hier gespeichert, nicht im Programmcode.</div></div><div><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>
   <div class="secbody" style="padding:14px 0 0">
     <div class="fld"><label class="lbl" for="cfg_titel">Name der Verwaltung (optional, erscheint im Titel)</label><input type="text" id="cfg_titel" value="${esc(c.titel)}"></div>
-    <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails. Die Funktion beschreibt die Aufgabe der Stelle und steht oben neben der Rollenauswahl.</p>
-      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Rolle im Ablauf</th><th>Funktion (Aufgabe)</th><th>Bezeichnung</th><th>Mailadresse</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
+    <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails. Die Funktion beschreibt die Aufgabe der Stelle und steht oben neben der Rollenauswahl. Die Frist gilt für diese Stelle in jeder Station; leer bedeutet Standardfrist.</p>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Rolle im Ablauf</th><th>Funktion (Aufgabe)</th><th>Bezeichnung</th><th>Mailadresse</th><th>Frist (Arbeitstage)</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
     <div class="fld"><label class="lbl">Begriffe</label><div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(cfg.begriffe).map(k => `<tr><td>${esc(bl[k])}</td><td><input type="text" id="cfg_b_${k}" aria-label="${esc(bl[k])}" value="${esc(c.begriffe[k])}"></td></tr>`).join('')}</tbody></table></div></div>
     <div class="fld"><label class="lbl">Links in der Kopfzeile</label><p class="help">Zum Beispiel Konzept, Quellcode oder Dienstanweisung. Alle, die die Laufkarte nutzen, sehen diese Links. Leere Zeilen werden ignoriert.</p>
       <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Titel</th><th>Adresse (https://…)</th></tr></thead><tbody>${Array.from({length: MAX_LINKS}, (_, i) => { const l = (c.links || [])[i] || {titel:'', url:''}; return `<tr><td><input type="text" id="cfg_lt_${i}" aria-label="Titel Link ${i + 1}" value="${esc(l.titel)}"></td><td><input type="text" inputmode="url" id="cfg_lu_${i}" aria-label="Adresse Link ${i + 1}" placeholder="https://…" value="${esc(l.url)}"></td></tr>`; }).join('')}</tbody></table></div></div>
     <div class="fld"><label class="opts"><input type="checkbox" id="cfg_test" ${c.testmodus ? 'checked' : ''}> <span><b>Testmodus</b>: alle Mails an eine einzige Adresse leiten</span></label></div>
     <div class="fld"><label class="lbl" for="cfg_testmail">Test-Mailadresse</label><input type="text" inputmode="email" id="cfg_testmail" value="${esc(c.testmail)}"></div>
-    <div class="fld"><label class="lbl" for="cfg_frist">Frist je Station in Arbeitstagen</label><input type="text" inputmode="numeric" id="cfg_frist" value="${esc(c.frist)}" style="max-width:120px"></div>
+    <div class="fld"><label class="lbl" for="cfg_frist">Standardfrist je Station in Arbeitstagen</label><p class="help">Gilt für alle Stellen ohne eigene Frist in der Tabelle oben.</p><input type="text" inputmode="numeric" id="cfg_frist" value="${esc(c.frist)}" style="max-width:120px"></div>
     ${state.ui.cfgErr ? `<ul class="errs" role="alert">${state.ui.cfgErr.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="primary" data-act="cfgsave">Einstellungen speichern</button><button type="button" data-act="cfgreset">Standardwerte laden</button></div>
     <details class="sec"><summary><div><h3>Einstellungen übertragen</h3><span class="oe">Als Text kopieren oder aus einer anderen Instanz einfügen</span></div></summary><div class="secbody">
@@ -1094,13 +1099,13 @@ function renderCfg(){
 function readCfgForm(){
   const x = {titel: $('#cfg_titel').value.trim(), testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}, links:[]};
   for (let i = 0; i < MAX_LINKS; i++){ const t = $('#cfg_lt_' + i).value.trim(), u = $('#cfg_lu_' + i).value.trim(); if (t || u) x.links.push({titel: t, url: u}); }
-  Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim(), funktion: $('#cfg_f_' + k).value.trim()}; });
+  Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim(), funktion: $('#cfg_f_' + k).value.trim(), frist: ($('#cfg_t_' + k)?.value || '').trim()}; });
   Object.keys(cfg.begriffe).forEach(k => { x.begriffe[k] = $('#cfg_b_' + k).value.trim(); });
   return x;
 }
 function checkCfg(x){
   const errs = [], mailOk = m => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m);
-  Object.keys(x.rollen).forEach(k => { if (!x.rollen[k].label) errs.push('Bezeichnung für ' + DEFAULT_CFG.rollen[k].label + ' fehlt'); if (x.rollen[k].mail && !mailOk(x.rollen[k].mail)) errs.push('Mailadresse für ' + (x.rollen[k].label || k) + ' ist ungültig'); });
+  Object.keys(x.rollen).forEach(k => { if (!x.rollen[k].label) errs.push('Bezeichnung für ' + DEFAULT_CFG.rollen[k].label + ' fehlt'); if (x.rollen[k].mail && !mailOk(x.rollen[k].mail)) errs.push('Mailadresse für ' + (x.rollen[k].label || k) + ' ist ungültig'); if (x.rollen[k].frist && !(+x.rollen[k].frist > 0)) errs.push('Frist für ' + (x.rollen[k].label || k) + ' bitte als Zahl größer 0 angeben oder leer lassen'); });
   if (x.testmodus && !mailOk(x.testmail)) errs.push('Test-Mailadresse ist ungültig');
   (x.links || []).forEach((l, i) => { if (!l.titel) errs.push('Link ' + (i + 1) + ': Titel fehlt'); if (!urlOk(l.url || '')) errs.push('Link ' + (l.titel || i + 1) + ': Adresse muss mit https:// beginnen'); });
   if (!(+x.frist > 0)) errs.push('Frist bitte als Zahl größer 0 angeben');
@@ -1283,20 +1288,24 @@ const FLOW_QUER = [
   ['Rückfragen und Hilfe','Jede Stelle kann eine Rückfrage an eine andere Stelle stellen; der Antragsteller fordert Hilfe an. Die Laufkarte bleibt dabei an ihrem Platz.'],
   ['Zustimmungen Dritter','Pflichtpunkte ergeben sich aus den Angaben und Stellungnahmen (z. B. AVV, Verzeichnis, DSFA, Programmprüfung, GPA-Zulassung, Zustimmung {PR}). Der Antragsteller hakt sie bis zur Freigabe ab; die Freigabe wartet nicht darauf.'],
   ['Zurückziehen','Der Antragsteller kann den Antrag jederzeit mit Begründung zurückziehen; alle bisher Beteiligten werden informiert.'],
-  ['Fristen','Je Station gilt eine Frist; die Liegezeit ist in der Vorgangsliste sichtbar. Wiedervorlagen gibt es bewusst nicht.']
+  ['Fristen','Jede Stelle hat eine Frist ab Eingang in der Station (Standardfrist oder eigene Frist je Stelle). Überschrittene Fristen und die Liegezeit sind in der Vorgangsliste sichtbar. Wiedervorlagen gibt es bewusst nicht.']
 ];
+function fristText(k){ // Frist der Station: eine Zahl oder je Stelle, wenn sie sich unterscheiden
+  const t = [...new Set(OPEN[k].map(fristTage))];
+  return t.length === 1 ? 'Frist ' + t[0] + ' Arbeitstage' : 'Frist (Arbeitstage): ' + OPEN[k].map(r => T('{' + r + '}') + ' ' + fristTage(r)).join(', ');
+}
 function flowDetail(){
   const li = a => `<ul style="margin:0;padding-left:16px">${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
   return `<h3 style="margin:18px 0 6px">Ablauf im Detail</h3>
     <div class="tw" style="margin-top:0"><table class="log flowdet" lang="de"><thead><tr><th>Nr.</th><th>Station und zuständig</th><th>Was passiert</th><th>Ergebnis und weiter</th><th>Mail an</th></tr></thead><tbody>
-    ${FLOW_DETAIL.map(d => `<tr><td class="num"><b>${esc(d.nr)}</b></td><td><b>${esc(d.k === 'S99' ? 'Freigegeben' : ST[d.k])}</b><br>${esc(d.wer)}${d.when ? `<br><span class="sub">${esc(d.when)}</span>` : ''}${d.also ? `<br><span class="sub">${esc(d.also)}</span>` : ''}${d.k !== 'S99' ? `<br><span class="sub">Frist ${cfg.frist} Arbeitstage</span>` : ''}</td><td>${li(d.was)}</td><td>${li(d.weiter)}</td><td>${esc(d.mail)}</td></tr>`).join('')}
+    ${FLOW_DETAIL.map(d => `<tr><td class="num"><b>${esc(d.nr)}</b></td><td><b>${esc(d.k === 'S99' ? 'Freigegeben' : ST[d.k])}</b><br>${esc(d.wer)}${d.when ? `<br><span class="sub">${esc(d.when)}</span>` : ''}${d.also ? `<br><span class="sub">${esc(d.also)}</span>` : ''}${d.k !== 'S99' ? `<br><span class="sub">${esc(fristText(d.k))}</span>` : ''}</td><td>${li(d.was)}</td><td>${li(d.weiter)}</td><td>${esc(d.mail)}</td></tr>`).join('')}
     </tbody></table></div>
     <h3 style="margin:14px 0 6px">Gilt in jeder Station</h3>${FLOW_QUER.map(([t, x]) => `<p class="sub" style="margin:0 0 6px"><b>${esc(t)}:</b> ${esc(x)}</p>`).join('')}`;
 }
 function flowBody(pid){
   return `<div class="flowwrap">${flowSvg(pid)}</div>
     <p class="sub" style="margin:10px 0 0"><b>Lesehilfe:</b> Durchgezogene Pfeile zeigen den normalen Weg. Gestrichelte Pfeile führen in die Klärung, wenn eine Stelle nicht zustimmt. „(parallel)“ heißt, die Stellen arbeiten gleichzeitig; erst wenn alle fertig sind, geht es weiter.</p>
-    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{R15}')} und ${esc('{KAT}')} nach der Freigabe. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt. Beschaffung und Bereitstellung folgen nach der Freigabe außerhalb der Laufkarte.</p>
+    <p class="sub" style="margin:6px 0 0">Frist je Station: ${cfg.frist} Arbeitstage, je Stelle in den Einstellungen anpassbar. Nur per Mail informiert: ${esc('{R141}')} bei prüfungspflichtiger Software, ${esc('{R15}')} und ${esc('{KAT}')} nach der Freigabe. ${esc('{PR}')} wird über ${esc('{R112}')} beteiligt. Beschaffung und Bereitstellung folgen nach der Freigabe außerhalb der Laufkarte.</p>
     <div class="flowdetwrap" lang="de">${flowDetail()}</div>`;
 }
 function renderFlow(){
@@ -1437,9 +1446,12 @@ function renderMain(){
     return;
   }
   const scroll = window.scrollY;
-  const role = state.role, bei = liegtBei(v), late = !FINAL(v.status) && new Date(v.frist) < new Date();
+  const role = state.role, bei = liegtBei(v), spaet = ueberfaellig(v);
+  const fr = [...new Set(bei.map(r => fmt(fristVon(v, r))))].length > 1
+    ? bei.map(r => `${esc(SHORT[r])} <span class="num" style="${spaet.includes(r) ? 'color:var(--bad);font-weight:600' : ''}">${fmt(fristVon(v, r))}</span>`).join(', ')
+    : `<span class="num" style="${spaet.length ? 'color:var(--bad);font-weight:600' : ''}">${bei.length ? fmt(fristVon(v, bei[0])) : fmt(v.frist)}</span>`;
   let h = `<div class="head"><div><span class="nr">${esc(v.nr)}</span><h2>${esc(v.f.vorhaben || 'Neuer Antrag')}</h2><div class="sub">${esc(v.f.fe_oe || 'Antragsteller')} · angelegt ${fmt(v.created)}</div></div>
-    <div class="where">${FINAL(v.status) ? `<b>${esc(ST[v.status])}</b>` : `Liegt bei: <b>${bei.map(r => esc(SHORT[r])).join(', ')}</b><br><span class="sub">${seitText(v.since)} (${fmt(v.since)}) · Frist <span class="num" style="${late ? 'color:var(--bad);font-weight:600' : ''}">${fmt(v.frist)}</span></span>`}</div></div>`;
+    <div class="where">${FINAL(v.status) ? `<b>${esc(ST[v.status])}</b>` : `Liegt bei: <b>${bei.map(r => esc(SHORT[r])).join(', ')}</b><br><span class="sub">${seitText(v.since)} (${fmt(v.since)}) · Frist ${fr}</span>`}</div></div>`;
   if (v.f.vza && v.f.vza.trim() !== '0') h += `<div style="margin-top:8px"><span class="chip">Geschätzte Einsparung: ${esc(v.f.vza)} VZÄ/Jahr</span></div>`;
   { const ci = consentItems(v.f).filter(it => it.req); if (ci.length) { const d = ci.filter(it => consentDone(v.f, it)).length; h += `<div style="margin-top:8px"><span class="chip ${d === ci.length ? 'ok' : 'late'}">Zustimmungen Dritter: ${d} von ${ci.length} erteilt</span></div>`; } }
   h += `<div class="route" aria-label="Fortschritt">${stations(v).map(s => `<div class="stop ${s.cls}"><i aria-hidden="true"></i><span>${esc(s.l)}</span><span class="sub">${esc(s.o)}</span></div>`).join('')}</div>`;
