@@ -1,0 +1,112 @@
+{
+  "titel": "Musterverwaltung",
+  "testmodus": true,
+  "testmail": "testpostfach@example.org",
+  "frist": 10,
+  "rollen": {
+    "FE": {
+      "label": "Antragsteller",
+      "mail": "",
+      "funktion": "Meldet den Bedarf"
+    },
+    "R151": {
+      "label": "IT-Bestandsprüfung",
+      "mail": "",
+      "funktion": "Prüft, ob es schon eine Lösung gibt"
+    },
+    "R013": {
+      "label": "Digitalisierung",
+      "mail": "",
+      "funktion": "Stellungnahme Methodik, Prozessbegleitung"
+    },
+    "R15": {
+      "label": "IT",
+      "mail": "it@example.org",
+      "funktion": "Technische Stellungnahme, Bereitstellung nach der Freigabe"
+    },
+    "R112": {
+      "label": "Organisation",
+      "mail": "",
+      "funktion": "Organisation, steuert Personalratsbeteiligung"
+    },
+    "DSB": {
+      "label": "Datenschutz",
+      "mail": "datenschutz@example.org",
+      "funktion": "Stellungnahme Datenschutz",
+      "frist": 15
+    },
+    "ISB": {
+      "label": "Informationssicherheit",
+      "mail": "",
+      "funktion": "Stellungnahme Informationssicherheit"
+    },
+    "PR": {
+      "label": "Personalrat",
+      "mail": "",
+      "funktion": "Beteiligung (nur lesend)"
+    },
+    "R141": {
+      "label": "Rechnungsprüfung",
+      "mail": "",
+      "funktion": "Programmprüfung (nur lesend)"
+    },
+    "KAT": {
+      "label": "Softwarekataster",
+      "mail": "",
+      "funktion": "Pflege des Softwarekatasters (nur Mail nach der Freigabe)"
+    }
+  },
+  "praefix": "SW",
+  "feiertage": [
+    "2026-12-25",
+    "2026-12-26"
+  ],
+  "mail": {
+    "anrede": "Guten Tag,",
+    "schluss": "Bei Fragen hilft {R013}. Diese Nachricht wurde automatisch erzeugt.",
+    "link": "https://laufkarte.example.org"
+  },
+  "begriffe": {
+    "KD": "Verwaltungsleitung",
+    "DA": "Dienstanweisung IT",
+    "BGA": "Dienstvereinbarung IT",
+    "KAEM": "Kämmerei",
+    "VG": "Vergabestelle",
+    "GO": "GO NRW",
+    "GPA": "GPA NRW",
+    "DSG": "DSG NRW",
+    "BITV": "BITV NRW"
+  },
+  "texte": {
+    "st.S1": "Bestandsprüfung"
+  },
+  "pflicht": {
+    "produkt_wunsch": false
+  },
+  "glossar": null,
+  "links": [
+    {
+      "titel": "Konzept",
+      "url": "https://example.org/konzept"
+    }
+  ],
+  "listen": {
+    "chk_151": {
+      "t": {},
+      "aus": [],
+      "neu": [
+        "Haushaltsmittel sind eingeplant"
+      ]
+    }
+  },
+  "zust": {
+    "t": {},
+    "neu": [
+      {
+        "l": "Freigabe der Haushaltsmittel",
+        "pflicht": true,
+        "aus": false
+      }
+    ]
+  }
+}
