@@ -217,10 +217,29 @@ const DEFAULT_CFG = {
   titel:'', testmodus:true, testmail:'testpostfach@example.org', frist:10,
   rollen:{FE:{label:'Antragsteller', mail:''}, R151:{label:'IT-Bestandsprüfung', mail:''}, R013:{label:'Digitalisierung', mail:''}, R15:{label:'IT', mail:''}, R112:{label:'Organisation', mail:''},
     DSB:{label:'Datenschutz', mail:''}, ISB:{label:'Informationssicherheit', mail:''}, PR:{label:'Personalrat', mail:''}, R141:{label:'Rechnungsprüfung', mail:''}, KAT:{label:'Softwarekataster', mail:''}},
-  begriffe:{KD:'Verwaltungsleitung', DA:'Dienstanweisung IT', BGA:'Dienstvereinbarung IT'},
-  links:[] // weiterführende Links in der Kopfzeile, z. B. Konzept oder Quellcode: {titel, url}
+  praefix:'SW', // Vorgangsnummer, z. B. SW-2026-0001
+  feiertage:[], // Feiertage im Format JJJJ-MM-TT; zählen bei Fristen nicht als Arbeitstag
+  mail:{anrede:'Guten Tag,', schluss:'Diese Nachricht wurde automatisch erzeugt.', link:''}, // Rahmen jeder Mail; link = Adresse der Laufkarte
+  begriffe:{KD:'Verwaltungsleitung', DA:'Dienstanweisung IT', BGA:'Dienstvereinbarung IT', KAEM:'Kämmerei', VG:'Vergabestelle', GO:'GO NRW', GPA:'GPA NRW', DSG:'DSG NRW', BITV:'BITV NRW'},
+  texte:{}, // geänderte Texte: sec.N (Einleitung), sec.N.t (Titel), st.X (Stationsname), f.ID.l (Beschriftung), f.ID.h (Hilfetext)
+  pflicht:{}, // Pflichtfeld ja/nein für Freitextfelder: {Feld-ID: true|false}
+  glossar:null, // null = mitgelieferte Begriffe, sonst Liste [Begriff, Erklärung]
+  links:[], // weiterführende Links in der Kopfzeile, z. B. Konzept oder Quellcode: {titel, url}
+  listen:{}, // Checklisten: je Liste {t: geänderte Texte nach Nummer, aus: ausgeblendete Nummern, neu: zusätzliche Punkte}
+  zust:{t:{}, neu:[]} // Zustimmungen Dritter: geänderte Bezeichnungen und eigene Punkte {l, pflicht, aus}
 };
 const MAX_LINKS = 5;
+// Konfigurierbare Checklisten. „fest“: Punkte, an denen Ablauflogik hängt; ihr Text ist änderbar, ausblenden geht nicht.
+const LISTEN = [
+  {id:'ds_vor', titel:'Datenschutz-Vorprüfung (Antragsteller)', fest:{0:'Widerspruchsprüfung zum KO-Kriterium EU/EWR', 4:'steuert, ob „keine Beteiligung {PR}“ wählbar ist'}},
+  {id:'ko', titel:'KO-Kriterien (Antragsteller)', fest:{2:'Widerspruchsprüfung zur Datenschutz-Vorprüfung'}},
+  {id:'chk_151', titel:'Prüfschritte {R151}', fest:{}},
+  {id:'fb_013', titel:'Fragebogen Methodik ({R013})', fest:{}},
+  {id:'fb_15', titel:'Technische Anforderungen ({R15})', fest:{}},
+  {id:'chk_dsb', titel:'Prüfpunkte Datenschutz ({DSB})', fest:{2:'macht den AVV zum Pflichtpunkt', 3:'macht den Verzeichniseintrag zum Pflichtpunkt', 4:'macht die DSFA zum Pflichtpunkt'}},
+  {id:'chk_isb', titel:'Prüfpunkte IT-Sicherheit ({ISB})', fest:{1:'Hinweis auf das Bereichskonzept'}}
+];
+const TEXT_KEY = /^(sec\.\d+(\.t)?|st\.[A-Z0-9]+|f\.[a-z0-9_]+\.[lh])$/; // erlaubte Schlüssel für geänderte Texte
 const urlOk = u => /^https?:\/\/[^\s"'<>]+$/i.test(u);
 Object.keys(DEFAULT_CFG.rollen).forEach(k => { DEFAULT_CFG.rollen[k].funktion = ROLE_INFO[k]; }); // Funktion (Aufgabe im Ablauf) ist ebenfalls einstellbar
 let cfg = JSON.parse(JSON.stringify(DEFAULT_CFG));
@@ -232,6 +251,25 @@ function mergeCfg(x){ // gespeicherte Einstellungen über die Standardwerte lege
   if (Number.isFinite(+x.frist) && +x.frist > 0) c.frist = Math.round(+x.frist);
   Object.keys(c.rollen).forEach(k => { const r = x.rollen && x.rollen[k]; if (r){ if (typeof r.label === 'string' && r.label.trim()) c.rollen[k].label = r.label.trim(); if (typeof r.mail === 'string') c.rollen[k].mail = r.mail.trim(); if (typeof r.funktion === 'string' && r.funktion.trim()) c.rollen[k].funktion = r.funktion.trim(); if (Number.isFinite(+r.frist) && +r.frist > 0 && String(r.frist).trim() !== '') c.rollen[k].frist = Math.round(+r.frist); } });
   Object.keys(c.begriffe).forEach(k => { if (x.begriffe && typeof x.begriffe[k] === 'string' && x.begriffe[k].trim()) c.begriffe[k] = x.begriffe[k].trim(); });
+  // Checklisten: geänderte Texte, ausgeblendete und zusätzliche Punkte je Liste
+  const str = v => typeof v === 'string' ? v.trim() : '';
+  if (x.listen && typeof x.listen === 'object') LISTEN.forEach(L => { const l = x.listen[L.id]; if (!l || typeof l !== 'object') return;
+    const o = {t:{}, aus:[], neu:[]};
+    Object.entries(l.t || {}).forEach(([i, t]) => { if (/^\d+$/.test(i) && str(t)) o.t[i] = str(t).slice(0, 300); });
+    if (Array.isArray(l.neu)) o.neu = l.neu.map(str).slice(0, 30).map(t => t.slice(0, 300) || '(leer)');
+    if (Array.isArray(l.aus)) o.aus = [...new Set(l.aus.map(Number).filter(n => Number.isInteger(n) && n >= 0 && !(n in L.fest)))];
+    c.listen[L.id] = o; });
+  if (x.zust && typeof x.zust === 'object'){
+    Object.entries(x.zust.t || {}).forEach(([k, t]) => { if (str(t)) c.zust.t[k] = str(t).slice(0, 300); });
+    if (Array.isArray(x.zust.neu)) c.zust.neu = x.zust.neu.filter(n => n && str(n.l)).slice(0, 20).map(n => ({l: str(n.l).slice(0, 300), pflicht: !!n.pflicht, aus: !!n.aus}));
+  }
+  if (typeof x.praefix === 'string' && /^[A-Za-z0-9]{1,10}$/.test(x.praefix.trim())) c.praefix = x.praefix.trim();
+  if (Array.isArray(x.feiertage)) c.feiertage = [...new Set(x.feiertage.filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort().slice(0, 200);
+  if (x.mail && typeof x.mail === 'object'){ ['anrede','schluss'].forEach(k => { if (typeof x.mail[k] === 'string') c.mail[k] = x.mail[k].trim().slice(0, 1000); });
+    if (typeof x.mail.link === 'string' && (!x.mail.link.trim() || urlOk(x.mail.link.trim()))) c.mail.link = x.mail.link.trim(); }
+  if (x.texte && typeof x.texte === 'object') Object.entries(x.texte).forEach(([k, t]) => { if (TEXT_KEY.test(k) && typeof t === 'string' && (t.trim() || /\.h$/.test(k))) c.texte[k] = t.trim().slice(0, 3000); });
+  if (x.pflicht && typeof x.pflicht === 'object') Object.entries(x.pflicht).forEach(([k, b]) => { if (/^[a-z0-9_]+$/.test(k) && typeof b === 'boolean') c.pflicht[k] = b; });
+  if (Array.isArray(x.glossar)) c.glossar = x.glossar.filter(g => Array.isArray(g) && typeof g[0] === 'string' && g[0].trim() && typeof g[1] === 'string').slice(0, 200).map(g => [g[0].trim().slice(0, 200), g[1].trim().slice(0, 2000)]);
   // Links: nur http(s)-Adressen mit Titel übernehmen
   if (Array.isArray(x.links)) c.links = x.links.filter(l => l && typeof l.titel === 'string' && l.titel.trim() && typeof l.url === 'string' && urlOk(l.url.trim())).slice(0, MAX_LINKS).map(l => ({titel: l.titel.trim(), url: l.url.trim()}));
   return c;
@@ -241,9 +279,39 @@ function applyCfg(x){
   Object.keys(cfg.rollen).forEach(k => { SHORT[k] = cfg.rollen[k].label; });
   ['FE','R151','R013','R15','R112','DSB','ISB'].forEach(k => { ROLES[k] = SHORT[k]; });
   ROLES.PR = SHORT.PR + ' (nur lesen)'; ROLES.R141 = SHORT.R141 + ' (nur lesen)';
+  try { applyLists(); } catch(e){} // beim ersten Aufruf sind die Felder noch nicht definiert
+}
+// Checklisten aus den Einstellungen auf die Felder übertragen. Nummern bleiben stabil: neue Punkte werden angehängt,
+// ausgeblendete Punkte bleiben in der Liste und werden nur nicht mehr angezeigt (gespeicherte Antworten passen weiter).
+function applyLists(){
+  LISTEN.forEach(L => {
+    const fd = FIELDS.find(x => x.id === L.id);
+    if (!fd._base){ fd._base = (fd.items || fd.opts.map(o => o[1])).slice(); fd._show = fd.itemShow || {}; fd._keys = fd.opts ? fd.opts.map(o => o[0]) : null; }
+    const c = cfg.listen[L.id] || {}, aus = new Set(c.aus || []);
+    const texte = fd._base.map((t, i) => (c.t && c.t[i]) || t).concat(c.neu || []);
+    if (fd.t === 'q'){
+      fd.items = texte; fd.itemShow = {};
+      texte.forEach((_, i) => { if (aus.has(i)) fd.itemShow[i] = () => false; else if (fd._show[i]) fd.itemShow[i] = fd._show[i]; });
+    } else fd.opts = texte.map((t, i) => [i < fd._base.length ? fd._keys[i] : 'n' + (i - fd._base.length), t]).filter((_, i) => !aus.has(i));
+  });
+  applyTexts();
+}
+// Freitextfelder: nur bei diesen darf die Pflicht umgestellt werden, weil keine Verzweigung an ihnen hängt
+const PFLICHT_OK = fd => ['text','textarea','file','date'].includes(fd.t);
+// Titel, Einleitungen, Stationsnamen, Beschriftungen, Hilfetexte und Pflichtfelder aus den Einstellungen übernehmen
+function applyTexts(){
+  const tx = cfg.texte;
+  SECS.forEach(sec => { if (!('_intro' in sec)){ sec._intro = sec.intro; sec._title = sec.title; }
+    sec.intro = tx['sec.' + sec.n] || sec._intro; sec.title = tx['sec.' + sec.n + '.t'] || sec._title; });
+  if (!ST_BASE.S0) Object.assign(ST_BASE, ST);
+  Object.keys(ST_BASE).forEach(k => { ST[k] = tx['st.' + k] || ST_BASE[k]; });
+  FIELDS.forEach(fd => { if (!('_l' in fd)){ fd._l = fd.l; fd._h = fd.h; fd._req = fd.req; }
+    fd.l = tx['f.' + fd.id + '.l'] || fd._l;
+    fd.h = ('f.' + fd.id + '.h') in tx ? tx['f.' + fd.id + '.h'] : fd._h;
+    fd.req = PFLICHT_OK(fd) && fd.id in cfg.pflicht ? (cfg.pflicht[fd.id] ? 1 : 0) : fd._req; });
 }
 // Platzhalter wie {R15} oder {KD} in Texten durch die eingestellten Bezeichnungen ersetzen
-function T(s){ return String(s ?? '').replace(/\{(FE|R151|R013|R15|R112|DSB|ISB|PR|R141|KAT|KD|DA|BGA)\}/g, (m, k) => SHORT[k] || cfg.begriffe[k] || m); }
+function T(s){ return String(s ?? '').replace(/\{([A-Z][A-Z0-9]*)\}/g, (m, k) => SHORT[k] || cfg.begriffe[k] || m); }
 applyCfg(null);
 const ACTIVE_ROLES = ['FE','R151','R013','R15','R112','DSB','ISB'];
 // Fristen: je Stelle einstellbar, sonst gilt die Standardfrist. Gezählt ab dem Eingang in der Station.
@@ -251,6 +319,7 @@ const fristTage = r => (cfg.rollen[r] && +cfg.rollen[r].frist > 0) ? +cfg.rollen
 const fristVon = (v, r) => addWorkdays(v.since, fristTage(r));
 
 // Status: Bezeichnung und welche Stationen gleichzeitig zuständig sind
+const ST_BASE = {}; // mitgelieferte Stationsnamen, werden beim ersten Anwenden der Einstellungen gefüllt
 const ST = {S0:'Entwurf', S1:'Prüfung vorhandene Lösung', V12:'Organisation und Stellungnahmen', N1:'Fortschreibung', B1:'Auswahlprozess', N2:'Abschließende Stellungnahmen', N4:'Klärung', S90:'Abgeschlossen ohne Einführung', S99:'Freigegeben'};
 const OPEN = {S0:['FE'], S1:['R151'], V12:['R112','DSB','ISB'], N1:['R013','R15'], B1:['FE'], N2:['DSB','ISB','R112'], N4:['FE'], S90:[], S99:[]};
 // Vorgänge aus älteren Ständen übernehmen: „Organisation und {PR}“ ist jetzt Teil der abschließenden Stellungnahmen,
@@ -268,7 +337,7 @@ const migAll = items => { Object.values(items || {}).forEach(migrate); return it
 const itemOn = (fd, i, f) => !fd.itemShow || !fd.itemShow[i] || fd.itemShow[i](f); // Prüfpunkt i einer Liste relevant?
 const optOn = (fd, k, f) => !fd.optShow || !fd.optShow[k] || fd.optShow[k](f);       // Antwortoption k wählbar?
 const PBD_NEIN = f => (f.pbd === 'unklar' ? f.pbd_klar : f.pbd) === 'nein';
-const KO_VALS = f => Object.entries(f.ko || {}).filter(([i]) => !(i === '2' && f.pbd === 'nein')).map(e => e[1]); // ohne nicht relevante Punkte
+const KO_VALS = f => { const fd = FIELDS.find(x => x.id === 'ko'); return Object.entries(f.ko || {}).filter(([i]) => itemOn(fd, +i, f)).map(e => e[1]); }; // nur angezeigte Punkte
 const KO_UNKLAR = f => KO_VALS(f).includes('unklar');
 const KO_ABGELEHNT = f => KO_UNKLAR(f) && f.ko_klar === 'nein';
 const FIN = f => (f.fin === 'unklar' ? f.fin_klar : f.fin) === 'ja';
@@ -287,7 +356,7 @@ const has = (a, x) => Array.isArray(a) && a.includes(x);
 // ===== Abschnitte =====
 const SECS = [
   {n:1, title:'Bedarfsmeldung', oe:'Antragsteller', when:()=>true,
-   intro:'Beschreiben Sie kurz, was Sie brauchen und warum. Ausfüllzeit etwa 10 Minuten. IT-Kenntnisse brauchen Sie dafür nicht: Kommen Sie nicht weiter, nutzen Sie unten „Hilfe anfordern“. Beschaffung, Haushaltsmittel und Vergabe klären Sie bitte parallel wie gewohnt (bei Bedarf mit 20 und der Vergabestelle).'},
+   intro:'Beschreiben Sie kurz, was Sie brauchen und warum. Ausfüllzeit etwa 10 Minuten. IT-Kenntnisse brauchen Sie dafür nicht: Kommen Sie nicht weiter, nutzen Sie unten „Hilfe anfordern“. Beschaffung, Haushaltsmittel und Vergabe klären Sie bitte parallel wie gewohnt (bei Bedarf mit {KAEM} und {VG}).'},
   {n:2, title:'Einordnung und KO-Kriterien', oe:'Antragsteller', when:()=>true,
    intro:'Diese Angaben entscheiden, welche Stellen beteiligt werden. Wenn Sie unsicher sind, wählen Sie „Unklar“. Das ist kein Nachteil; {R013} klärt es mit Ihnen. Fachbegriffe finden Sie oben unter „Begriffe erklärt“.'},
   {n:3, title:'Prüfung vorhandene Lösung', oe:'{R151}', when:v=>v.status!=='S0',
@@ -295,7 +364,7 @@ const SECS = [
   {n:4, title:'Fortschreibung Neueinführung', oe:'{R013} und {R15}', when:v=>has(v.reached,'N1'),
    intro:'{R013} und {R15} bearbeiten ihre Teile parallel, gern gemeinsam mit dem Antragsteller. Die Stellungnahmen werden Bestandteil des Beschaffungsvorgangs.'},
   {n:5, title:'Auswahlprozess', oe:'Antragsteller', when:v=>has(v.reached,'B1'),
-   intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz. Die Auswahl ersetzt kein Vergabeverfahren; stimmen Sie den Vergabeweg mit der Vergabestelle ab.'},
+   intro:'Es kommen mehrere Produkte in Frage. Beteiligen Sie die genannten Stellen im Rahmen Ihrer Auswahl (mindestens Information) und dokumentieren Sie das hier kurz. Die Auswahl ersetzt kein Vergabeverfahren; stimmen Sie den Vergabeweg mit {VG} ab.'},
   {n:6, title:'Stellungnahme Datenschutz und IT-Sicherheit', oe:'{DSB} und {ISB}, nach einem Auswahlprozess auch {R15}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
    intro:'{DSB} und {ISB} arbeiten parallel, gleichzeitig mit {R112}. Auflagen bitte konkret und prüfbar formulieren; sie erscheinen beim Antragsteller als Checkliste zur Kenntnisnahme.'},
   {n:7, title:'Organisation und Personalrat', oe:'{R112}', when:v=>has(v.reached,'V12')||has(v.reached,'N2'),
@@ -354,9 +423,9 @@ const FIELDS = [
    items:['Daten werden außerhalb der EU/des EWR verarbeitet','Besondere Kategorien (z. B. Gesundheit, Sozialdaten)','Schutzbedürftige Personen betroffen (z. B. Kinder)','Automatisierte Entscheidungen oder Profiling','Leistungs- oder Verhaltenskontrolle von Beschäftigten technisch möglich','Hersteller oder Dienstleister stellt eine Datenschutz-Folgenabschätzung bereit'],
    h:'Hilft {DSB} und {PR}, früh einzuschätzen, ob eine Folgenabschätzung oder Zustimmung nötig ist. „Weiß nicht“ ist ausdrücklich erlaubt.'},
   {id:'fin', sec:2, own:'FE', st:['S0'], t:'radio', l:'Ist die Software haushalts-, kassen- oder finanzrelevant?', req:1, opts:JNU,
-   h:'Dann prüft {R141} das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der GPA NRW.'},
+   h:'Dann prüft {R141} das Programm vor dem Einsatz; Finanzsoftware braucht zudem eine Zulassung der {GPA}.'},
   {id:'ko', sec:2, own:'FE', st:['S0'], t:'q', l:'KO-Kriterien', req:1, itemShow:{2:f=>f.pbd!=='nein'}, answers:[['ja','Erfüllt'],['unklar','Unklar'],['nein','Nicht erfüllt']],
-   items:['Kein Verstoß gegen Innenrecht (z. B. {DA})','Kein Parallelprodukt zu einer in der Verwaltung eingesetzten Lösung, soweit bekannt (One-Product-Strategie)','Bei personenbezogenen Daten: Verarbeitung in EU/EWR, Auftragsverarbeitungsvertrag möglich','Rollen- und Rechtekonzept sowie Protokollierung vorhanden','Barrierefreiheit nach BITV NRW, sofern relevant'],
+   items:['Kein Verstoß gegen Innenrecht (z. B. {DA})','Kein Parallelprodukt zu einer in der Verwaltung eingesetzten Lösung, soweit bekannt (One-Product-Strategie)','Bei personenbezogenen Daten: Verarbeitung in EU/EWR, Auftragsverarbeitungsvertrag möglich','Rollen- und Rechtekonzept sowie Protokollierung vorhanden','Barrierefreiheit nach {BITV}, sofern relevant'],
    h:'„Nicht erfüllt“ sperrt das Absenden. „Unklar“ ist erlaubt und wird von {R013} und {R151} geklärt. Platzhalter, bis die Fachlichkeiten die finale Liste liefern.'},
   // Abschnitt 3
   {id:'chk_151', sec:3, own:'R151', st:['S1'], t:'checks', l:'Prüfschritte', req:'all', col:1, opts:[['kataster','Softwarekataster auf vorhandene Lösungen geprüft'],['lizenz','Lizenzlage geprüft'],['strategie','Abgleich mit der IT-Strategie erfolgt']]},
@@ -376,7 +445,7 @@ const FIELDS = [
   {id:'ko_klar', sec:3, own:'R151', st:['S1'], t:'radio', l:'Geklärt: unklare KO-Kriterien', req:1, col:1, opts:[['ja','Alle unklaren Kriterien sind erfüllt'],['nein','Mindestens ein Kriterium ist nicht erfüllt (Ablehnung)']], show:f=>KO_UNKLAR(f)},
   {id:'ko_klar_doku', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Ergebnis der Klärung', req:1, show:f=>KO_UNKLAR(f),
    h:'Kurz festhalten, wie die unklaren Punkte geklärt wurden und mit wem.'},
-  {id:'gonrw', sec:3, own:'R151', st:['S1'], t:'check', l:'Prüfungspflichtig durch {R141} (GO NRW, {DA})', show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f)&&!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 GO NRW. Gilt für beide Wege. {R141} wird automatisch informiert. Finanzrelevante Software ist immer prüfungspflichtig.'},
+  {id:'gonrw', sec:3, own:'R151', st:['S1'], t:'check', l:'Prüfungspflichtig durch {R141} ({GO}, {DA})', show:f=>f.strategie==='ja'&&!KO_ABGELEHNT(f)&&!FIN(f), h:'Programmprüfung vor dem Einsatz nach § 104 Abs. 1 Nr. 3 {GO}. Gilt für beide Wege. {R141} wird automatisch informiert. Finanzrelevante Software ist immer prüfungspflichtig.'},
   {id:'hinweis_151', sec:3, own:'R151', st:['S1'], t:'textarea', l:'Hinweis an den Antragsteller (optional)'},
   // Abschnitt 4: {R013}
   {id:'fb_013', sec:4, own:'R013', st:['N1'], t:'q', l:'Fragebogen Methodik (Platzhalter)', req:1, answers:JNU, itemShow:{4:f=>KI(f)},
@@ -396,7 +465,7 @@ const FIELDS = [
   {id:'produkt', sec:4, own:'R013', st:['N1'], t:'text', l:'Software bzw. Dienst', req:1, show:f=>f.ergebnis==='A'||f.ergebnis==='E'},
   {id:'alleinstellung', sec:4, own:'R013', st:['N1'], t:'textarea', l:'Begründung, warum nur diese Software in Frage kommt', req:1, show:f=>f.ergebnis==='A',
    h:'Wird für die Vergabe gebraucht, z. B. Anbindung an ein vorhandenes Fachverfahren, Vorgabe des Landes oder nur ein Anbieter am Markt. Gern gemeinsam mit dem Antragsteller.'},
-  {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit der Vergabestelle. Die Begründung oben gehört in den Vergabevermerk.', show:f=>f.ergebnis==='A'},
+  {id:'vergabe_hinweis', sec:4, t:'info', l:'Hinweis: Bei nur einer möglichen Software klärt der Antragsteller die Vergabe mit {VG}. Die Begründung oben gehört in den Vergabevermerk.', show:f=>f.ergebnis==='A'},
   // Abschnitt 4: IT
   {id:'fb_15', sec:4, own:'R15', st:['N1'], t:'q', l:'Technische Anforderungen (Platzhalter)', req:1, answers:JNU, itemShow:{2:f=>has(f.art,'schnittstelle')},
    items:['Betriebsart ist geklärt','Anmeldung über zentrale Benutzerverwaltung möglich','Schnittstellen sind beschrieben','Datensicherung und Wiederherstellung geregelt','Arbeitsplatz-Anforderungen erfüllt']},
@@ -410,13 +479,13 @@ const FIELDS = [
   {id:'bet_begr', sec:5, own:'FE', st:['B1'], t:'textarea', l:'Begründung für „nicht erforderlich“', req:1, show:f=>f.bet&&Object.values(f.bet).includes('nein')},
   {id:'produkte', sec:5, own:'FE', st:['B1'], t:'repeat', l:'Geprüfte Produkte und Ergebnis', req:1, min:2, h:'Mindestens zwei Produkte, je ein Satz zum Ergebnis.'},
   {id:'produkt_b', sec:5, own:'FE', st:['B1'], t:'text', l:'Ausgewählte Software', req:1},
-  {id:'vergabe_ok', sec:5, own:'FE', st:['B1'], t:'check', l:'Vergabeweg mit der Vergabestelle abgestimmt', req:1,
-   h:'Die Auswahl ersetzt kein Vergabeverfahren. Klären Sie mit der Vergabestelle, ob Ihre Auswahl als Markterkundung vor der Vergabe läuft oder schon Teil des Vergabeverfahrens ist.'},
+  {id:'vergabe_ok', sec:5, own:'FE', st:['B1'], t:'check', l:'Vergabeweg mit {VG} abgestimmt', req:1,
+   h:'Die Auswahl ersetzt kein Vergabeverfahren. Klären Sie mit {VG}, ob Ihre Auswahl als Markterkundung vor der Vergabe läuft oder schon Teil des Vergabeverfahrens ist.'},
   {id:'doku_b', sec:5, own:'FE', st:['B1'], t:'file', l:'Weitere Dokumentation (optional)'},
   // Abschnitt 6: {DSB}
   {id:'dsb_keine', sec:6, t:'info', l:'Nach den bisherigen Angaben werden keine personenbezogenen Daten verarbeitet. Die Prüfpunkte entfallen; bitte bestätigen Sie das kurz mit Ihrem Votum.', show:f=>PBD_NEIN(f)},
   {id:'chk_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'q', l:'Prüfpunkte Datenschutz', req:1, answers:JNU, show:f=>!PBD_NEIN(f), itemShow:{5:f=>KI(f)},
-   items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 DSG NRW)','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich','KI-Funktion: Verarbeitung personenbezogener Daten ist geprüft (z. B. kein Training mit unseren Daten)']},
+   items:['DSFA des Herstellers kann nachgenutzt werden (§ 24 Abs. 3 {DSG})','Rechtsgrundlage der Verarbeitung ist benannt','Auftragsverarbeitungsvertrag erforderlich','Eintrag im Verzeichnis der Verarbeitungstätigkeiten erforderlich','Datenschutz-Folgenabschätzung erforderlich','KI-Funktion: Verarbeitung personenbezogener Daten ist geprüft (z. B. kein Training mit unseren Daten)']},
   {id:'votum_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'radio', l:'Votum {DSB}', req:1, opts:VOTUM},
   {id:'auflagen_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Auflagen {DSB}', req:1, show:f=>f.votum_dsb==='auflagen', h:'Eine Auflage je Zeile.'},
   {id:'empf_dsb', sec:6, own:'DSB', st:['V12','N2'], t:'textarea', l:'Begründung und Empfehlung {DSB}', req:1, show:f=>f.votum_dsb==='nein'},
@@ -455,8 +524,11 @@ const FIELDS = [
   {id:'zust_weitere', sec:9, own:'FE', editors:['FE'], anytime:1, t:'repeat', rows:1, ph:['Weitere Zustimmung (z. B. Fachaufsicht)','Erteilt am / Aktenzeichen'], l:'Weitere Zustimmungen (optional)'}
 ];
 
+applyLists();
+
 // ===== Hilfsfunktionen =====
 const $ = s => document.querySelector(s);
+const escR = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); // ohne Platzhalter-Ersetzung
 const esc = s => T(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
 let clockOffset = 0; // nur für den Demovorgang: verschiebt die Uhr, damit der Laufzettel einen realistischen Zeitverlauf zeigt
@@ -464,9 +536,10 @@ const nowIso = () => new Date(Date.now() + clockOffset).toISOString();
 const fmt = iso => iso ? new Date(iso).toLocaleDateString('de-DE') : '';
 const fmtT = iso => iso ? new Date(iso).toLocaleString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
 const fmtDateStr = d => d ? d.split('-').reverse().join('.') : '';
-function addWorkdays(iso, n){ // Arbeitstage ohne Wochenenden (Feiertage im Prototyp nicht berücksichtigt)
-  const d = new Date(iso); let c = 0;
-  while (c < n){ d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) c++; }
+function addWorkdays(iso, n){ // Arbeitstage ohne Wochenenden und ohne die eingestellten Feiertage
+  const d = new Date(iso), frei = new Set(cfg.feiertage || []); let c = 0;
+  const tag = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+  while (c < n){ d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6 && !frei.has(tag(d))) c++; }
   return d.toISOString();
 }
 const daysSince = iso => Math.floor((Date.now() - new Date(iso)) / 864e5);
@@ -582,7 +655,7 @@ function mail(v, ziel, aufgabe, text){
   aufgabe = T(aufgabe); text = T(text || '');
   v.mails.push({ts: nowIso(), an: cfg.testmodus ? cfg.testmail : (echt || 'keine Adresse hinterlegt'), ziel: name + (echt ? ' <' + echt + '>' : ''),
     betreff: `${cfg.testmodus ? '[TEST → ' + name + '] ' : ''}${v.nr} ${vh}: ${aufgabe}`,
-    text: `Guten Tag,\n\nder Vorgang ${v.nr} „${vh}“ (${v.f.fe_oe || 'Antragsteller'}) ${text || 'liegt jetzt bei Ihnen.'}\nIhre Aufgabe: ${aufgabe}\n${FINAL(v.status) ? '' : 'Bitte bis: ' + fmt(v.open.includes(ziel) ? fristVon(v, ziel) : v.frist) + '\n'}\nZum Vorgang: (Link zum Formular)\nBisheriger Verlauf: siehe Laufzettel im Formular.\n\nDiese Nachricht wurde automatisch erzeugt.`});
+    text: `${cfg.mail.anrede ? cfg.mail.anrede + '\n\n' : ''}der Vorgang ${v.nr} „${vh}“ (${v.f.fe_oe || 'Antragsteller'}) ${text || 'liegt jetzt bei Ihnen.'}\nIhre Aufgabe: ${aufgabe}\n${FINAL(v.status) ? '' : 'Bitte bis: ' + fmt(v.open.includes(ziel) ? fristVon(v, ziel) : v.frist) + '\n'}\nZum Vorgang: ${cfg.mail.link || '(Link zur Laufkarte)'} (Vorgangsnummer ${v.nr})\nBisheriger Verlauf: siehe Laufzettel im Formular.${cfg.mail.schluss ? '\n\n' + T(cfg.mail.schluss) : ''}`});
 }
 function log(v, rolle, aktion, kommentar){ v.log.push({ts: nowIso(), rolle, aktion: T(aktion), kommentar: T(kommentar || '')}); }
 function enter(v, st){
@@ -615,14 +688,14 @@ function rejectors(v, from){
 function transition(v, from = v.status, freigabe = false){
   const f = v.f;
   const go = st => { enter(v, st); log(v, 'System', 'Weiter an: ' + ST[st]); };
-  const rpaInfo = txt => { if (f.gonrw || FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 GO NRW', txt); };
+  const rpaInfo = txt => { if (f.gonrw || FIN(f)) mail(v, 'R141', 'Zur Information: prüfungspflichtig nach § 104 {GO}', txt); };
   // Ende der Laufkarte: Freigabe zur Beschaffung bzw. zur Nutzung vorhandener Software. Offene Pflichtpunkte gehen an {R15}.
   const freigeben = (frei) => {
     go('S99');
     const vorh = f.verfahren === 'vorhanden', offen = consentMissing(f).map(it => T(it.l)), af = auflagenListe(f);
     const offenTxt = offen.length ? ' Vor der Inbetriebnahme müssen noch vorliegen: ' + offen.join(', ') + '.' : '';
     const afTxt = af.length ? '\nAuflagen:\n' + af.map(a => '- ' + T(a)).join('\n') + '\n' : '';
-    mail(v, 'FE', vorh ? 'Freigabe zur Nutzung' : 'Freigabe zur Beschaffung', (frei ? 'wurde durch {KD} freigegeben.' : 'ist freigegeben.') + (vorh ? ' Die vorhandene Software kann genutzt werden; {R15} richtet den Zugang ein.' : ' Die Beschaffung kann beginnen (mit der Vergabestelle).') + offenTxt + ' Das Protokoll für die Ablage im DMS finden Sie im Reiter „Protokoll“.' + afTxt);
+    mail(v, 'FE', vorh ? 'Freigabe zur Nutzung' : 'Freigabe zur Beschaffung', (frei ? 'wurde durch {KD} freigegeben.' : 'ist freigegeben.') + (vorh ? ' Die vorhandene Software kann genutzt werden; {R15} richtet den Zugang ein.' : ' Die Beschaffung kann beginnen (mit {VG}).') + offenTxt + ' Das Protokoll für die Ablage im DMS finden Sie im Reiter „Protokoll“.' + afTxt);
     mail(v, 'R15', 'Zur Information: freigegeben, Bereitstellung vorbereiten', 'ist freigegeben' + (vorh ? '.' : ' und geht in die Beschaffung.') + ' Bitte vor der Bereitstellung prüfen, dass alle Pflichtpunkte vorliegen.' + (offen.length ? ' Noch offen: ' + offen.join(', ') + '.' : '') + afTxt);
     mail(v, 'R013', 'Zur Information: freigegeben', 'ist freigegeben.');
     mail(v, 'KAT', 'Zur Information: freigegeben', 'ist freigegeben. Die Aufnahme ins Softwarekataster erfolgt mit der Bereitstellung.');
@@ -681,18 +754,20 @@ function transition(v, from = v.status, freigabe = false){
 }
 
 // ===== Zustimmungen Dritter: Pflicht ergibt sich aus Angaben und Stellungnahmen =====
+const ZUST_BASE = ['gpa','rpa','pr','avv','vvt','dsfa','bk','land'];
 function consentItems(f){
   const dsb = PBD_NEIN(f) ? {} : (f.chk_dsb || {}), isb = f.chk_isb || {};
   return [
-    {k:'gpa', l:'Zulassung der GPA NRW (Finanzsoftware)', rg:'§ 94 Abs. 2 GO NRW', req: FIN(f), why:'Antragsteller: finanzrelevant'},
-    {k:'rpa', l:'Programmprüfung durch {R141} vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 GO NRW (bitte intern bestätigen)', req: !!f.gonrw || FIN(f), why:'prüfungspflichtig'},
+    {k:'gpa', l:'Zulassung der {GPA} (Finanzsoftware)', rg:'§ 94 Abs. 2 {GO}', req: FIN(f), why:'Antragsteller: finanzrelevant'},
+    {k:'rpa', l:'Programmprüfung durch {R141} vor dem Einsatz', rg:'§ 104 Abs. 1 Nr. 3 {GO} (bitte intern bestätigen)', req: !!f.gonrw || FIN(f), why:'prüfungspflichtig'},
     {k:'pr', l:'Zustimmung des Personalrats', rg:'{BGA}, gepflegt von {R112}', req: f.pr_stufe === 'zustimmung', why:'{R112}: Zustimmung erforderlich', auto: f.pr_stufe === 'zustimmung' && f.pr_ergebnis === 'ja' && f.pr_datum ? f.pr_datum : null},
     {k:'avv', l:'Auftragsverarbeitungsvertrag abgeschlossen', rg:'Art. 28 DSGVO', req: dsb[2] === 'ja', why:'{DSB}: AVV erforderlich'},
     {k:'vvt', l:'Eintrag im Verzeichnis der Verarbeitungstätigkeiten', rg:'Art. 30 DSGVO', req: dsb[3] === 'ja', why:'{DSB}: VVT-Eintrag erforderlich'},
-    {k:'dsfa', l:'Datenschutz-Folgenabschätzung abgeschlossen', rg:'Art. 35 DSGVO, § 24 DSG NRW', req: dsb[4] === 'ja', why:'{DSB}: DSFA erforderlich'},
+    {k:'dsfa', l:'Datenschutz-Folgenabschätzung abgeschlossen', rg:'Art. 35 DSGVO, § 24 {DSG}', req: dsb[4] === 'ja', why:'{DSB}: DSFA erforderlich'},
     {k:'bk', l:'Bereichskonzept bzw. Schutzbedarfsfeststellung vorgelegt', rg:'Auflage {ISB}', req:false, hint: isb[1] === 'ja' ? 'von {ISB} gefordert' : ''},
     {k:'land', l:'Zustimmung von Land, Bund oder Fachaufsicht', rg:'nur falls vorgeschrieben', req:false, hint: f.anlass === 'vorgabe' ? 'Vorgabe von Land oder Bund angegeben' : ''}
-  ];
+  ].map(it => Object.assign(it, {l: cfg.zust.t[it.k] || it.l}))
+   .concat(cfg.zust.neu.map((n, i) => ({k: 'z' + i, l: n.l, rg: 'eigener Punkt aus den Einstellungen', req: n.pflicht, why: 'Einstellung „immer Pflicht“', aus: n.aus}))).filter(it => !it.aus);
 }
 function consentDone(f, it){ return !!(it.auto || (f.zust && f.zust[it.k] && f.zust[it.k].ok)); }
 function consentMissing(f){ return consentItems(f).filter(it => it.req && !consentDone(f, it)); }
@@ -820,7 +895,7 @@ async function actAck(id){
 }
 function newVorgang(){
   const n = Object.keys(state.items).length + 1;
-  return {id: rid(), nr: 'SW-' + new Date().getFullYear() + '-' + String(n).padStart(4, '0'), created: nowIso(), status: 'S0', open: ['FE'], done: [], reached: ['S0'], since: nowIso(), frist: addWorkdays(nowIso(), cfg.frist), f: {}, log: [], mails: [], rfs: []};
+  return {id: rid(), nr: cfg.praefix + '-' + new Date().getFullYear() + '-' + String(n).padStart(4, '0'), created: nowIso(), status: 'S0', open: ['FE'], done: [], reached: ['S0'], since: nowIso(), frist: addWorkdays(nowIso(), cfg.frist), f: {}, log: [], mails: [], rfs: []};
 }
 async function actNew(){
   const v = newVorgang(); log(v, 'FE', 'Antrag angelegt');
@@ -829,7 +904,7 @@ async function actNew(){
 // Demodaten für den Knopf „Demodaten vorbelegen“: füllt nur leere Felder der eigenen Station (positiver Verlauf)
 function demoWerte(){
   const q = (n, a, abw) => Object.assign(Object.fromEntries(Array.from({length: n}, (_, i) => [i, a])), abw || {}), heute = new Date().toISOString().slice(0, 10);
-  return {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo)', bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
+  const w = {fe_oe:'Fachbereich Soziales (Demo)', fe_kontakt:'Demo-Ansprechperson', vorhaben:'Online-Terminvergabe (Demo)', bedarf:'Bürgerinnen und Bürger sollen Termine online buchen können. Heute laufen alle Termine telefonisch.',
     anlass:'verbesserung', verbesserung:'Weniger Telefonate, kürzere Wartezeiten, besser vorbereitete Termine.', vza:'0,6', vza_grundlage:'ca. 6.000 Telefontermine × 10 Minuten', vza_verwendung:'entlastung',
     verantwortlich:'Demo-Ansprechperson', nutzer:'Sachbearbeitung, ca. 12 Personen', art:['saas','schnittstelle'], schnittstelle:'Übergabe der Termine in den Gruppenkalender. Bei Ausfall telefonische Terminvergabe.',
     betriebsart_alt:'unbekannt', portal:'Demo-Portal, Betreiber Land', vorgabe:'Demo-Rechtsgrundlage', online:'nein', ki:'nein', ki_zweck:'Assistent beantwortet Fragen zur Terminbuchung (Demo)', ki_klar:'nein', pbd:'ja', ds_vor:q(6, 'nein'), fin:'nein', ko:q(5, 'ja'),
@@ -839,6 +914,14 @@ function demoWerte(){
     bet:q(6, 'ja'), produkte:[{p:'Produkt A', e:'Erfüllt alle Muss-Anforderungen'},{p:'Produkt B', e:'Keine Kalenderschnittstelle'}], produkt_b:'Produkt A (Demo)', vergabe_ok:true,
     chk_dsb:q(6, 'ja', {4:'nein'}), votum_dsb:'auflagen', auflagen_dsb:'Löschung der Termindaten nach 90 Tagen (Demo).', chk_isb:q(4, 'ja'), votum_isb:'ja', it_ok:'ja',
     org_auswirk:'nein', pr_stufe:'anzeige', pr_datum: heute, pr_ergebnis:'ja', klaerung:'erneut', klaerung_doku:'Offene Punkte mit der Stelle geklärt (Demo).'};
+  return listenErgaenzen(w);
+}
+// Demodaten: zusätzliche Checklistenpunkte aus den Einstellungen mit der häufigsten Antwort der Liste füllen, Pflicht-Abhaklisten vollständig
+function listenErgaenzen(w){
+  FIELDS.forEach(fd => { const x = w[fd.id]; if (!x) return;
+    if (fd.t === 'q'){ const vs = Object.values(x), m = vs.slice().sort((a, b) => vs.filter(v => v === b).length - vs.filter(v => v === a).length)[0]; fd.items.forEach((_, i) => { if (!(i in x)) x[i] = m; }); }
+    if (fd.t === 'checks' && fd.req === 'all') w[fd.id] = fd.opts.map(o => o[0]); });
+  return w;
 }
 function actFill(id){
   const v = state.items[id], role = state.role, werte = demoWerte(); if (!v) return;
@@ -867,7 +950,7 @@ async function actDemo(){
   const v = newVorgang(), f = v.f;
   // eine Station erledigt ihre Angaben (wie „Erledigt, weiterleiten“)
   const erledigt = (role, felder) => {
-    Object.assign(f, felder);
+    Object.assign(f, listenErgaenzen(felder));
     const lücken = validate(v, role); if (lücken.length) console.warn('Demovorgang unvollständig', role, v.status, lücken); // Selbstprüfung der Demodaten
     v.done.push(role);
     log(v, SHORT[role], 'Erledigt' + (v.status === 'S0' ? ' (Antrag abgesendet)' : ''), stationSummary(v, role));
@@ -1077,30 +1160,109 @@ function syncHead(){
 function renderCfg(){
   const c = state.ui.cfgDraft || cfg;
   const row = k => `<tr><td><b>${esc(DEFAULT_CFG.rollen[k].label)}</b><div class="sub">Standard: ${esc(ROLE_INFO[k])}</div></td><td><input type="text" id="cfg_f_${k}" aria-label="Funktion ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].funktion || ROLE_INFO[k])}"></td><td><input type="text" id="cfg_l_${k}" aria-label="Bezeichnung ${esc(DEFAULT_CFG.rollen[k].label)}" value="${esc(c.rollen[k].label)}"></td><td><input type="text" inputmode="email" id="cfg_m_${k}" aria-label="Mailadresse ${esc(DEFAULT_CFG.rollen[k].label)}" placeholder="postfach@example.org" value="${esc(c.rollen[k].mail)}"></td><td>${ACTIVE_ROLES.includes(k) ? `<input type="text" inputmode="numeric" id="cfg_t_${k}" aria-label="Frist ${esc(DEFAULT_CFG.rollen[k].label)} in Arbeitstagen" placeholder="${esc(c.frist)}" value="${esc(c.rollen[k].frist || '')}" style="max-width:80px">` : '<span class="sub">–</span>'}</td></tr>`;
-  const bl = {KD:'Leitung, die im Streitfall entscheidet', DA:'Dienstanweisung zur IT', BGA:'Vereinbarung zur Personalratsbeteiligung'};
-  $('#main').innerHTML = `<div class="head"><div><h2>Einstellungen</h2><div class="sub">Gelten für alle, die diese Instanz nutzen. Sie werden nur hier gespeichert, nicht im Programmcode.</div></div><div><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>
+  const bl = {KD:'Leitung, die im Streitfall entscheidet', DA:'Dienstanweisung zur IT', BGA:'Vereinbarung zur Personalratsbeteiligung', KAEM:'Finanzbereich für Haushaltsmittel', VG:'Stelle für Vergabeverfahren', GO:'Gemeindeordnung (Landesrecht)', GPA:'Überörtliche Prüfung (Zulassung Finanzsoftware)', DSG:'Landesdatenschutzgesetz', BITV:'Barrierefreiheitsverordnung'};
+  const grp = (titel, sub, inhalt, offen) => `<details class="sec"${offen ? ' open' : ''}><summary><div><h3>${titel}</h3><span class="oe">${sub}</span></div></summary><div class="secbody">${inhalt}</div></details>`;
+  $('#main').innerHTML = `<div class="head"><div><h2>Einstellungen</h2><div class="sub">Gelten für alle, die diese Instanz nutzen. Alles Anpassbare steht hier und wird nur in dieser Instanz gespeichert, nicht im Programmcode. Ablauf und Verzweigungen sind bewusst fest; sie sind Gegenstand der Abstimmung.</div></div><div><button type="button" data-act="fbback">Zurück zur Laufkarte</button></div></div>
   <div class="secbody" style="padding:14px 0 0">
-    <div class="fld"><label class="lbl" for="cfg_titel">Name der Verwaltung (optional, erscheint im Titel)</label><input type="text" id="cfg_titel" value="${esc(c.titel)}"></div>
-    <div class="fld"><label class="lbl">Organisationseinheiten und Mailadressen</label><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails. Die Funktion beschreibt die Aufgabe der Stelle und steht oben neben der Rollenauswahl. Die Frist gilt für diese Stelle in jeder Station; leer bedeutet Standardfrist.</p>
-      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Rolle im Ablauf</th><th>Funktion (Aufgabe)</th><th>Bezeichnung</th><th>Mailadresse</th><th>Frist (Arbeitstage)</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
-    <div class="fld"><label class="lbl">Begriffe</label><div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(cfg.begriffe).map(k => `<tr><td>${esc(bl[k])}</td><td><input type="text" id="cfg_b_${k}" aria-label="${esc(bl[k])}" value="${esc(c.begriffe[k])}"></td></tr>`).join('')}</tbody></table></div></div>
+    ${grp('Allgemein', 'Name der Verwaltung, Vorgangsnummer, Links', `
+    <div class="fld"><label class="lbl" for="cfg_titel">Name der Verwaltung (optional, erscheint im Titel)</label><input type="text" id="cfg_titel" value="${escR(c.titel)}"></div>
+    <div class="fld"><label class="lbl" for="cfg_praefix">Kürzel der Vorgangsnummer</label><p class="help">Buchstaben oder Ziffern, höchstens 10 Zeichen. Gilt für neue Vorgänge, z. B. ${escR(c.praefix)}-${new Date().getFullYear()}-0001.</p><input type="text" id="cfg_praefix" value="${escR(c.praefix)}" style="max-width:120px"></div>
     <div class="fld"><label class="lbl">Links in der Kopfzeile</label><p class="help">Zum Beispiel Konzept, Quellcode oder Dienstanweisung. Alle, die die Laufkarte nutzen, sehen diese Links. Leere Zeilen werden ignoriert.</p>
-      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Titel</th><th>Adresse (https://…)</th></tr></thead><tbody>${Array.from({length: MAX_LINKS}, (_, i) => { const l = (c.links || [])[i] || {titel:'', url:''}; return `<tr><td><input type="text" id="cfg_lt_${i}" aria-label="Titel Link ${i + 1}" value="${esc(l.titel)}"></td><td><input type="text" inputmode="url" id="cfg_lu_${i}" aria-label="Adresse Link ${i + 1}" placeholder="https://…" value="${esc(l.url)}"></td></tr>`; }).join('')}</tbody></table></div></div>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Titel</th><th>Adresse (https://…)</th></tr></thead><tbody>${Array.from({length: MAX_LINKS}, (_, i) => { const l = (c.links || [])[i] || {titel:'', url:''}; return `<tr><td><input type="text" id="cfg_lt_${i}" aria-label="Titel Link ${i + 1}" value="${escR(l.titel)}"></td><td><input type="text" inputmode="url" id="cfg_lu_${i}" aria-label="Adresse Link ${i + 1}" placeholder="https://…" value="${escR(l.url)}"></td></tr>`; }).join('')}</tbody></table></div></div>`, true)}
+    ${grp('Organisationseinheiten, Mailadressen und Fristen', 'Bezeichnung, Funktion, Mailadresse und Frist je Stelle', `
+    <div class="fld"><p class="help">Die Bezeichnung erscheint überall: in der Rollenauswahl, in Abschnitten, Hilfetexten und Mails. Die Funktion beschreibt die Aufgabe der Stelle und steht oben neben der Rollenauswahl. Die Frist gilt für diese Stelle in jeder Station; leer bedeutet Standardfrist.</p>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Rolle im Ablauf</th><th>Funktion (Aufgabe)</th><th>Bezeichnung</th><th>Mailadresse</th><th>Frist (Arbeitstage)</th></tr></thead><tbody>${Object.keys(cfg.rollen).map(row).join('')}</tbody></table></div></div>
+    <div class="fld"><label class="lbl" for="cfg_frist">Standardfrist je Station in Arbeitstagen</label><p class="help">Gilt für alle Stellen ohne eigene Frist in der Tabelle.</p><input type="text" inputmode="numeric" id="cfg_frist" value="${escR(c.frist)}" style="max-width:120px"></div>
+    <div class="fld"><label class="lbl" for="cfg_feiertage">Feiertage (ein Datum je Zeile, TT.MM.JJJJ)</label><p class="help">Zählen bei Fristen nicht als Arbeitstag. Wochenenden sind immer frei.</p><textarea id="cfg_feiertage" style="min-height:80px">${escR((c.feiertage || []).map(d => /^\d{4}-\d{2}-\d{2}$/.test(d) ? fmtDateStr(d) : d).join('\n'))}</textarea></div>`)}
+    ${grp('Begriffe', 'Leitung, Regelwerke, Landesrecht; erscheinen in allen Texten', `<div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(cfg.begriffe).map(k => `<tr><td>${esc(bl[k] || k)}<div class="sub">Platzhalter {${k}}</div></td><td><input type="text" id="cfg_b_${k}" aria-label="${esc(bl[k] || k)}" value="${escR(c.begriffe[k])}"></td></tr>`).join('').replace(/\{(?=[A-Z])/g, '&#123;')}</tbody></table></div>`)}
+    ${grp('Mails', 'Testmodus, Anrede, Schlusssatz, Adresse der Laufkarte', `
     <div class="fld"><label class="opts"><input type="checkbox" id="cfg_test" ${c.testmodus ? 'checked' : ''}> <span><b>Testmodus</b>: alle Mails an eine einzige Adresse leiten</span></label></div>
-    <div class="fld"><label class="lbl" for="cfg_testmail">Test-Mailadresse</label><input type="text" inputmode="email" id="cfg_testmail" value="${esc(c.testmail)}"></div>
-    <div class="fld"><label class="lbl" for="cfg_frist">Standardfrist je Station in Arbeitstagen</label><p class="help">Gilt für alle Stellen ohne eigene Frist in der Tabelle oben.</p><input type="text" inputmode="numeric" id="cfg_frist" value="${esc(c.frist)}" style="max-width:120px"></div>
+    <div class="fld"><label class="lbl" for="cfg_testmail">Test-Mailadresse</label><input type="text" inputmode="email" id="cfg_testmail" value="${escR(c.testmail)}"></div>
+    <div class="fld"><label class="lbl" for="cfg_anrede">Anrede</label><input type="text" id="cfg_anrede" value="${escR(c.mail.anrede)}"></div>
+    <div class="fld"><label class="lbl" for="cfg_schluss">Schlusssatz</label><p class="help">Zum Beispiel Hinweis auf Ansprechpersonen. Platzhalter wie {R013} sind erlaubt.</p><textarea id="cfg_schluss" style="min-height:60px">${escR(c.mail.schluss).replace(/\{/g, '&#123;')}</textarea></div>
+    <div class="fld"><label class="lbl" for="cfg_link">Adresse der Laufkarte (https://…, optional)</label><p class="help">Erscheint in jeder Mail als Link zum Vorgang.</p><input type="text" inputmode="url" id="cfg_link" placeholder="https://…" value="${escR(c.mail.link)}"></div>`)}
+    ${grp('Checklisten', 'Prüfpunkte je Stelle sowie Zustimmungen Dritter', `<p class="help">Texte ändern, Punkte ausblenden oder neue Punkte anhängen. Ausgeblendete Punkte erscheinen in neuen Bearbeitungen nicht mehr; bereits gegebene Antworten bleiben erhalten. Punkte mit Schloss steuern den Ablauf und lassen sich nur umformulieren. Platzhalter wie {R15} werden durch die Bezeichnungen ersetzt.</p>${cfgListen(c)}`.replace(/\{(?=[A-Z])/g, '&#123;'))}
+    ${grp('Texte und Pflichtfelder', 'Abschnittstitel, Einleitungen, Stationsnamen, Beschriftungen, Hilfetexte', cfgTexte(c).replace(/\{(?=[A-Z])/g, '&#123;'))}
+    ${grp('Glossar', '„Begriffe erklärt“ für Antragsteller', `<p class="help">Ein Begriff je Zeile, Begriff und Erklärung durch | getrennt. Platzhalter wie {R15} sind erlaubt. Leeres Feld stellt die mitgelieferte Liste wieder her.</p><textarea id="cfg_glossar" aria-label="Glossar" style="min-height:220px">${escR((c.glossar || GLOSSAR_STD).map(g => g[0] + ' | ' + g[1]).join('\n'))}</textarea>`.replace(/\{(?=[A-Z])/g, '&#123;'))}
     ${state.ui.cfgErr ? `<ul class="errs" role="alert">${state.ui.cfgErr.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="primary" data-act="cfgsave">Einstellungen speichern</button><button type="button" data-act="cfgreset">Standardwerte laden</button></div>
-    <details class="sec"><summary><div><h3>Einstellungen übertragen</h3><span class="oe">Als Text kopieren oder aus einer anderen Instanz einfügen</span></div></summary><div class="secbody">
-      <textarea id="cfg_json" aria-label="Einstellungen als Text" style="min-height:140px;font-family:var(--font-mono);font-size:.8rem">${esc(JSON.stringify(cfg, null, 1)).replace(/\{/g, '&#123;')}</textarea>
+    <details class="sec"><summary><div><h3>Einstellungen übertragen</h3><span class="oe">Gesamte Konfiguration als Text kopieren oder aus einer anderen Instanz einfügen</span></div></summary><div class="secbody">
+      <textarea id="cfg_json" aria-label="Einstellungen als Text" style="min-height:140px;font-family:var(--font-mono);font-size:.8rem">${escR(JSON.stringify(cfg, null, 1)).replace(/\{/g, '&#123;')}</textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" data-act="cfgcopy">Kopieren</button><button type="button" data-act="cfgimport">Eingefügten Text übernehmen</button></div></div></details>
   </div>`;
 }
+// Texte und Pflichtfelder: je Abschnitt Titel und Einleitung, je Feld Beschriftung, Hilfetext und (bei Freitext) Pflicht
+function cfgTexte(c){
+  const tx = c.texte || {}, pf = c.pflicht || {};
+  const st = `<details class="sec"><summary><div><h3>Stationsnamen</h3><span class="oe">erscheinen in Liste, Status und Ablaufgrafik</span></div></summary><div class="secbody"><div class="tw" style="margin:0"><table class="log"><tbody>${Object.keys(ST_BASE).map(k => `<tr><td class="sub">${escR(ST_BASE[k])}</td><td><input type="text" id="cfg_st_${k}" aria-label="Stationsname ${escR(ST_BASE[k])}" value="${escR(tx['st.' + k] || ST_BASE[k])}"></td></tr>`).join('')}</tbody></table></div></div></details>`;
+  return `<p class="help">Hilfetext leeren blendet ihn aus. Die Pflicht lässt sich nur bei Freitextfeldern umstellen; Auswahlfelder steuern den Ablauf.</p>` + st + SECS.map(sec => {
+    const fds = FIELDS.filter(fd => fd.sec === sec.n && fd.t !== 'consent');
+    const rows = fds.map(fd => `<tr><td><span class="sub">${escR(fd.id)}</span></td><td>${fd.t === 'info' ? `<textarea id="cfg_fl_${fd.id}" aria-label="Hinweistext" style="min-height:60px">${escR(tx['f.' + fd.id + '.l'] || fd._l)}</textarea>` : `<input type="text" id="cfg_fl_${fd.id}" aria-label="Beschriftung ${escR(fd.id)}" value="${escR(tx['f.' + fd.id + '.l'] || fd._l)}">
+      <input type="text" id="cfg_fh_${fd.id}" aria-label="Hilfetext ${escR(fd.id)}" placeholder="kein Hilfetext" value="${escR(('f.' + fd.id + '.h') in tx ? tx['f.' + fd.id + '.h'] : fd._h || '')}" style="margin-top:4px;font-size:.85rem">`}</td>
+      <td>${PFLICHT_OK(fd) ? `<label class="opts"><input type="checkbox" id="cfg_fp_${fd.id}" ${(fd.id in pf ? pf[fd.id] : fd._req) ? 'checked' : ''}> <span>Pflicht</span></label>` : `<span class="sub">${fd._req ? 'Pflicht' : ''}</span>`}</td></tr>`).join('');
+    return `<details class="sec"><summary><div><h3>${sec.n} ${escR(sec._title)}</h3><span class="oe">${fds.length} Felder</span></div></summary><div class="secbody">
+      <label class="lbl" for="cfg_sect_${sec.n}">Titel</label><input type="text" id="cfg_sect_${sec.n}" value="${escR(tx['sec.' + sec.n + '.t'] || sec._title)}">
+      <label class="lbl" for="cfg_seci_${sec.n}">Einleitung</label><textarea id="cfg_seci_${sec.n}" style="min-height:70px">${escR(tx['sec.' + sec.n] || sec._intro)}</textarea>
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Feld</th><th>Beschriftung und Hilfetext</th><th>Pflicht</th></tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
+  }).join('');
+}
+function readCfgTexte(x){
+  x.texte = {}; x.pflicht = {};
+  const set = (k, wert, basis, leerOk) => { const t = (wert || '').trim(); if (t !== (basis || '') && (t || leerOk)) x.texte[k] = t; };
+  Object.keys(ST_BASE).forEach(k => set('st.' + k, $('#cfg_st_' + k)?.value, ST_BASE[k]));
+  SECS.forEach(sec => { set('sec.' + sec.n + '.t', $('#cfg_sect_' + sec.n)?.value, sec._title); set('sec.' + sec.n, $('#cfg_seci_' + sec.n)?.value, sec._intro); });
+  FIELDS.forEach(fd => { const l = $('#cfg_fl_' + fd.id); if (!l) return;
+    set('f.' + fd.id + '.l', l.value, fd._l);
+    const h = $('#cfg_fh_' + fd.id); if (h) set('f.' + fd.id + '.h', h.value, fd._h, true);
+    const p = $('#cfg_fp_' + fd.id); if (p && p.checked !== !!fd._req) x.pflicht[fd.id] = p.checked; });
+  // Feiertage: TT.MM.JJJJ oder JJJJ-MM-TT; ungültige Zeilen bleiben zur Korrektur stehen
+  x.feiertage = ($('#cfg_feiertage')?.value || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => { const m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : t; });
+  const gl = ($('#cfg_glossar')?.value || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => { const i = t.indexOf('|'); return i < 0 ? [t, ''] : [t.slice(0, i).trim(), t.slice(i + 1).trim()]; });
+  x.glossar = !gl.length || JSON.stringify(gl) === JSON.stringify(GLOSSAR_STD) ? null : gl;
+}
+// Einstellungsseite: eine aufklappbare Tabelle je Checkliste, dazu die Zustimmungen Dritter
+function cfgListen(c){
+  const lis = LISTEN.map(L => {
+    const fd = FIELDS.find(x => x.id === L.id), l = c.listen[L.id] || {}, aus = new Set(l.aus || []);
+    const rows = fd._base.concat(l.neu || []).map((b, i) => { const neu = i >= fd._base.length, fest = i in L.fest, text = neu ? b : (l.t && l.t[i]) || b;
+      return `<tr><td class="num">${i + 1}</td><td><input type="text" id="cfg_li_${L.id}_${i}" aria-label="Punkt ${i + 1}" value="${escR(text)}">${fest ? `<div class="sub">🔒 ${esc(L.fest[i])}</div>` : neu ? '<div class="sub">eigener Punkt</div>' : ''}</td>`
+        + `<td><label class="opts"><input type="checkbox" id="cfg_la_${L.id}_${i}" ${aus.has(i) ? '' : 'checked'} ${fest ? 'disabled' : ''}> <span>anzeigen</span></label></td></tr>`; }).join('');
+    const geaendert = (l.neu || []).length + (l.aus || []).length + Object.keys(l.t || {}).length;
+    return `<details class="sec"><summary><div><h3>${esc(L.titel)}</h3><span class="oe">${fd._base.length + (l.neu || []).length} Punkte${geaendert ? ' · angepasst' : ''}</span></div></summary><div class="secbody">
+      <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Nr.</th><th>Text</th><th>Sichtbar</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <label class="lbl" for="cfg_ln_${L.id}">Neue Punkte anhängen (ein Punkt je Zeile)</label><textarea id="cfg_ln_${L.id}" style="min-height:60px"></textarea></div></details>`;
+  }).join('');
+  const zb = consentItemsBase(), zrows = zb.map(it => `<tr><td><input type="text" id="cfg_zt_${it.k}" aria-label="${esc(it.l)}" value="${escR(c.zust.t[it.k] || it.l)}"><div class="sub">${esc(it.rg)}; Pflicht ergibt sich aus dem Ablauf</div></td><td></td><td></td></tr>`).join('')
+    + c.zust.neu.map((n, i) => `<tr><td><input type="text" id="cfg_zn_${i}" aria-label="Eigener Punkt ${i + 1}" value="${escR(n.l)}"><div class="sub">eigener Punkt</div></td><td><label class="opts"><input type="checkbox" id="cfg_zp_${i}" ${n.pflicht ? 'checked' : ''}> <span>immer Pflicht</span></label></td><td><label class="opts"><input type="checkbox" id="cfg_za_${i}" ${n.aus ? '' : 'checked'}> <span>anzeigen</span></label></td></tr>`).join('');
+  return lis + `<details class="sec"><summary><div><h3>Zustimmungen und Zulassungen Dritter</h3><span class="oe">Bezeichnungen und eigene Punkte, z. B. Freigabe der Haushaltsmittel</span></div></summary><div class="secbody">
+    <div class="tw" style="margin:0"><table class="log"><thead><tr><th>Bezeichnung</th><th>Pflicht</th><th>Sichtbar</th></tr></thead><tbody>${zrows}</tbody></table></div>
+    <label class="lbl" for="cfg_zneu">Eigene Punkte anhängen (ein Punkt je Zeile; * am Anfang = immer Pflicht; Text leeren entfernt einen eigenen Punkt)</label><textarea id="cfg_zneu" style="min-height:60px"></textarea></div></details>`;
+}
+function consentItemsBase(){ const z = cfg.zust; cfg.zust = {t:{}, neu:[]}; try { return consentItems({}).filter(it => ZUST_BASE.includes(it.k)); } finally { cfg.zust = z; } }
+function readCfgListen(x){
+  const zeilen = id => ($('#' + id)?.value || '').split('\n').map(t => t.trim()).filter(Boolean);
+  x.listen = {};
+  LISTEN.forEach(L => {
+    const fd = FIELDS.find(q => q.id === L.id), o = {t:{}, aus:[], neu:[]};
+    for (let i = 0; $('#cfg_li_' + L.id + '_' + i); i++){ // so viele Zeilen, wie angezeigt werden
+      const t = ($('#cfg_li_' + L.id + '_' + i)?.value || '').trim();
+      if (i < fd._base.length){ if (t && t !== fd._base[i]) o.t[i] = t; } else o.neu.push(t || '(leer)');
+      if (!(i in L.fest) && !$('#cfg_la_' + L.id + '_' + i)?.checked) o.aus.push(i);
+    }
+    o.neu = o.neu.concat(zeilen('cfg_ln_' + L.id));
+    x.listen[L.id] = o;
+  });
+  const zb = consentItemsBase(); x.zust = {t:{}, neu:[]};
+  zb.forEach(it => { const t = ($('#cfg_zt_' + it.k)?.value || '').trim(); if (t && t !== it.l) x.zust.t[it.k] = t; });
+  for (let i = 0; $('#cfg_zn_' + i); i++){ const l = $('#cfg_zn_' + i).value.trim(); if (l) x.zust.neu.push({l, pflicht: $('#cfg_zp_' + i).checked, aus: !$('#cfg_za_' + i).checked}); } // leerer Text entfernt den Punkt
+  zeilen('cfg_zneu').forEach(t => x.zust.neu.push({l: t.replace(/^\*\s*/, ''), pflicht: t.startsWith('*'), aus: false}));
+}
 function readCfgForm(){
-  const x = {titel: $('#cfg_titel').value.trim(), testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}, links:[]};
+  const x = {titel: $('#cfg_titel').value.trim(), praefix: $('#cfg_praefix').value.trim(), mail: {anrede: $('#cfg_anrede').value.trim(), schluss: $('#cfg_schluss').value.trim(), link: $('#cfg_link').value.trim()}, testmodus: $('#cfg_test').checked, testmail: $('#cfg_testmail').value.trim(), frist: $('#cfg_frist').value.trim(), rollen:{}, begriffe:{}, links:[]};
   for (let i = 0; i < MAX_LINKS; i++){ const t = $('#cfg_lt_' + i).value.trim(), u = $('#cfg_lu_' + i).value.trim(); if (t || u) x.links.push({titel: t, url: u}); }
   Object.keys(cfg.rollen).forEach(k => { x.rollen[k] = {label: $('#cfg_l_' + k).value.trim(), mail: $('#cfg_m_' + k).value.trim(), funktion: $('#cfg_f_' + k).value.trim(), frist: ($('#cfg_t_' + k)?.value || '').trim()}; });
   Object.keys(cfg.begriffe).forEach(k => { x.begriffe[k] = $('#cfg_b_' + k).value.trim(); });
+  readCfgListen(x); readCfgTexte(x);
   return x;
 }
 function checkCfg(x){
@@ -1109,6 +1271,10 @@ function checkCfg(x){
   if (x.testmodus && !mailOk(x.testmail)) errs.push('Test-Mailadresse ist ungültig');
   (x.links || []).forEach((l, i) => { if (!l.titel) errs.push('Link ' + (i + 1) + ': Titel fehlt'); if (!urlOk(l.url || '')) errs.push('Link ' + (l.titel || i + 1) + ': Adresse muss mit https:// beginnen'); });
   if (!(+x.frist > 0)) errs.push('Frist bitte als Zahl größer 0 angeben');
+  if (!/^[A-Za-z0-9]{1,10}$/.test(x.praefix || '')) errs.push('Kürzel der Vorgangsnummer: 1 bis 10 Buchstaben oder Ziffern');
+  (x.feiertage || []).forEach(d => { if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(new Date(d))) errs.push('Feiertag „' + d + '“ bitte als TT.MM.JJJJ angeben'); });
+  if (x.mail && x.mail.link && !urlOk(x.mail.link)) errs.push('Adresse der Laufkarte muss mit https:// beginnen');
+  (x.glossar || []).forEach(g => { if (!g[1]) errs.push('Glossar: Erklärung zu „' + g[0] + '“ fehlt (Begriff | Erklärung)'); });
   return errs;
 }
 async function saveCfgForm(x){
@@ -1132,10 +1298,10 @@ const GR_START = [
   ['Fristen','Gelten 10 Arbeitstage je Station? Was passiert bei Überschreitung (Erinnerung, Eskalation an wen)?'],
   ['Erste Anlaufstelle für Hilfe','Wer beantwortet „Hilfe anfordern“ der Facheinheiten? Im Prototyp {R013}.'],
   ['Protokoll und Ablage','Wer legt das Protokoll im DMS ab, zu welchem Zeitpunkt und unter welchem Aktenzeichen?'],
-  ['Rechtsgrundlage Programmprüfung','§ 104 Abs. 1 Nr. 3 GO NRW statt § 102 wie in der Vorlage. Bitte bestätigen.'],
+  ['Rechtsgrundlage Programmprüfung','§ 104 Abs. 1 Nr. 3 {GO} statt § 102 wie in der Vorlage. Bitte bestätigen.'],
   ['Technische Umsetzung','Mit welchem System wird der abgestimmte Ablauf später umgesetzt, und wer prüft die Machbarkeit?'],
   ['Erneute Auslösung des Ablaufs','Wann lösen ein Versionswechsel, ein neues Modul oder ein Herstellerwechsel den Ablauf erneut aus, und wann genügt eine Anzeige?','erneut'],
-  ['Produktauswahl und Vergabe','Kommen mehrere Produkte in Frage, wählt der Antragsteller eines aus, bevor vergeben ist, und {DSB} und {ISB} nehmen zu diesem Produkt Stellung. Ist diese Auswahl eine Markterkundung vor der Vergabe oder schon Teil des Vergabeverfahrens? Genügt bei nur einer Software die Begründung der Alleinstellung durch {R013} für den Vergabevermerk? Bitte mit der Vergabestelle klären.','vergabe'],
+  ['Produktauswahl und Vergabe','Kommen mehrere Produkte in Frage, wählt der Antragsteller eines aus, bevor vergeben ist, und {DSB} und {ISB} nehmen zu diesem Produkt Stellung. Ist diese Auswahl eine Markterkundung vor der Vergabe oder schon Teil des Vergabeverfahrens? Genügt bei nur einer Software die Begründung der Alleinstellung durch {R013} für den Vergabevermerk? Bitte mit {VG} klären.','vergabe'],
   ['Ende der Laufkarte und Bereitstellung','Die Laufkarte endet jetzt mit der Freigabe zur Beschaffung bzw. Nutzung. Pflichtpunkte Dritter (z. B. AVV, Programmprüfung, GPA-Zulassung) entstehen oft erst in der Beschaffung und gehen offen an {R15}. Soll die Bereitstellung durch {R15} mit Prüfung dieser Punkte als kurzer Schlussschritt ohne Frist in die Laufkarte zurück, oder läuft sie außerhalb? Wer stellt vor der Inbetriebnahme sicher, dass alle Pflichtpunkte vorliegen?','ende'],
   ['KI-Funktionen','Im Prototyp ordnet {R013} KI-Funktionen nach der KI-Verordnung ein, {DSB} prüft die Datenverarbeitung. Ist das die richtige Zuständigkeit, und welche internen Regeln zur KI-Nutzung gelten?','ki']
 ];
@@ -1275,7 +1441,7 @@ const FLOW_DETAIL = [
    weiter:['Passt nicht zur IT-Strategie oder KO-Kriterium nicht erfüllt → Ende ohne Einführung','Vorhandene Software nutzbar → Organisation und Stellungnahmen (nur ohne neue Schnittstelle, neues Modul, Wechsel der Betriebsart oder KI)','Sonst → Fortschreibung (Neueinführung)'], mail:'je nach Weg die nächsten Stellen; {R141} bei Prüfungspflicht'},
   {nr:'3', k:'N1', wer:'{R013} und {R15} (parallel)', was:['{R013}: Fragebogen Methodik, Stellungnahme, Votum; bei KI Einordnung nach KI-Verordnung','{R013}: EfA-Prüfung bei Onlinediensten (EfA-First, Abweichung begründen)','{R013}: Ergebnis der Marktsicht: Nachnutzung, A (nur eine Software, mit Begründung der Alleinstellung) oder B (mehrere Produkte)','{R15}: technische Anforderungen, Stellungnahme, Votum'],
    weiter:['Nicht befürwortet → Klärung','Nachnutzung oder A → Abschließende Stellungnahmen','B → Auswahlprozess'], mail:'nächste Stellen; Antragsteller zur Information'},
-  {nr:'4', k:'B1', wer:'Antragsteller', when:'nur bei Ergebnis B', was:['Beteiligte Stellen informieren oder anhören und je Stelle dokumentieren','Mindestens zwei geprüfte Produkte mit Ergebnis, ausgewählte Software','Vergabeweg mit der Vergabestelle abgestimmt (Pflicht)'],
+  {nr:'4', k:'B1', wer:'Antragsteller', when:'nur bei Ergebnis B', was:['Beteiligte Stellen informieren oder anhören und je Stelle dokumentieren','Mindestens zwei geprüfte Produkte mit Ergebnis, ausgewählte Software','Vergabeweg mit {VG} abgestimmt (Pflicht)'],
    weiter:['→ Abschließende Stellungnahmen; {R15} bestätigt zusätzlich das gewählte Produkt'], mail:'{DSB}, {ISB}, {R112}, {R15}'},
   {nr:'5', k:'N2', wer:'{DSB}, {ISB} und {R112}', also:'im Weg „vorhandene Software“ dieselbe Station ohne Fortschreibung (Organisation und Stellungnahmen)', was:['{DSB}: Prüfpunkte Datenschutz (AVV, Verzeichnis, DSFA, KI), Votum, Auflagen','{ISB}: Prüfpunkte IT-Sicherheit (Schutzbedarf, Bereichskonzept, Sicherheitsnachweis), Votum, Auflagen','{R112}: organisatorische Auswirkungen, parallel zu {DSB} und {ISB}','{R112}: Beteiligung {PR} (keine, Anzeige, Zustimmung) erst, wenn {DSB} und {ISB} Stellung genommen haben'],
    weiter:['{DSB} oder {ISB} nicht zugestimmt → sofort Klärung, {PR} wird noch nicht beteiligt','{PR} nicht zugestimmt → Klärung (nicht durch {KD} ersetzbar)','Alle zugestimmt, auch unter Auflagen → Freigabe'], mail:'{R112} sobald {DSB} und {ISB} vorliegen; {PR} bei Anzeige oder Zustimmung'},
@@ -1322,7 +1488,8 @@ function printHtml(html){
 function flowPrint(){ printHtml(`<div class="proto" style="padding:20px"><h1>Ablauf Softwareeinführung${cfg.titel ? ' · ' + esc(cfg.titel) : ''}</h1><p class="meta">Stand ${fmt(nowIso())}</p>${flowBody('pfd')}</div>`); }
 
 // ===== Glossar: Fachbegriffe in einfacher Sprache =====
-const GLOSSAR = [
+const glossar = () => cfg.glossar || GLOSSAR_STD; // eigene Liste aus den Einstellungen oder die mitgelieferte
+const GLOSSAR_STD = [
   ['SaaS (Software as a Service)','Die Software läuft nicht bei uns, sondern beim Anbieter im Internet. Sie nutzen sie über den Browser. Die Daten liegen dann beim Anbieter.'],
   ['On-Premise','Die Software läuft auf eigenen Servern der Verwaltung. Betrieb und Datensicherung übernimmt {R15}.'],
   ['Schnittstelle','Eine technische Verbindung, über die zwei Programme automatisch Daten austauschen, zum Beispiel ein Fachverfahren mit der E-Akte.'],
@@ -1357,7 +1524,7 @@ const GLOSSAR = [
 ];
 function renderGlossar(){
   const q = ($('#gl_q').value || '').trim().toLowerCase();
-  const hits = GLOSSAR.filter(g => !q || (g[0] + ' ' + T(g[1])).toLowerCase().includes(q));
+  const hits = glossar().filter(g => !q || (g[0] + ' ' + T(g[1])).toLowerCase().includes(q));
   $('#gl_list').innerHTML = hits.map(g => `<div><dt style="font-weight:600">${esc(g[0])}</dt><dd style="margin:2px 0 0;color:var(--muted)">${esc(g[1])}</dd></div>`).join('') || '<p class="sub" style="margin:0">Kein Treffer. Nutzen Sie „Hilfe anfordern“ im Antrag.</p>';
 }
 // ===== Protokoll für die Ablage im DMS =====

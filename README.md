@@ -4,7 +4,21 @@ Klickbarer Prototyp der digitalen Laufkarte für Softwareeinführungen. Er dient
 Alle Stellen (Antragsteller, IT, Digitalisierung, Organisation, Datenschutz, Informationssicherheit) bearbeiten denselben Vorgang nacheinander oder parallel.
 Rückfragen, Laufzettel und ein Mail-Protokoll sind enthalten.
 
-**Einstellungen:** Über den Knopf „Einstellungen“ lassen sich die Bezeichnungen aller Organisationseinheiten, ihre Mailadressen, zentrale Begriffe, die Frist je Station und der Testmodus ändern. Die Werte gelten für alle, die die Instanz nutzen. Sie liegen nur im Daten-Volume (`config.json`), nicht im Repository. Über „Einstellungen übertragen“ lassen sie sich als Text kopieren und in einer anderen Instanz einfügen.
+**Einstellungen (zentrale Konfiguration):** Alles Anpassbare steht im Knopf „Einstellungen“ und wird als eine Datei gespeichert (`config.json` im Daten-Volume, nicht im Repository):
+
+| Bereich | Inhalt |
+| --- | --- |
+| Allgemein | Name der Verwaltung, Kürzel der Vorgangsnummer, Links in der Kopfzeile |
+| Organisationseinheiten | Bezeichnung, Funktion, Mailadresse und Frist je Stelle, Standardfrist, Feiertage |
+| Begriffe | Leitung, Dienstanweisung, Dienstvereinbarung, Kämmerei, Vergabestelle, Landesrecht (GO, GPA, DSG, BITV) |
+| Mails | Testmodus, Test-Adresse, Anrede, Schlusssatz, Adresse der Laufkarte |
+| Checklisten | Prüfpunkte je Stelle: Texte ändern, Punkte ausblenden, eigene Punkte anhängen; Zustimmungen Dritter umbenennen und ergänzen (wahlweise immer Pflicht) |
+| Texte und Pflichtfelder | Abschnittstitel, Einleitungen, Stationsnamen, Feldbeschriftungen, Hilfetexte; Pflicht bei Freitextfeldern |
+| Glossar | „Begriffe erklärt“ für Antragsteller |
+
+Bewusst fest im Code bleiben Ablauf, Stationen und Verzweigungsregeln (`ST`, `OPEN`, `transition()`): Sie sind Gegenstand der Abstimmung. Punkte, an denen Regeln hängen (z. B. EU/EWR-Verarbeitung, Kontrolle von Beschäftigten, AVV/VVT/DSFA), lassen sich umformulieren, aber nicht ausblenden. Ausgeblendete Punkte behalten ihre Nummer, damit gespeicherte Antworten passen.
+
+Über „Einstellungen übertragen“ lässt sich die gesamte Konfiguration als Text kopieren und in einer anderen Instanz einfügen. `config.beispiel.json` zeigt den Aufbau mit neutralen Beispielwerten.
 
 **Hilfe für Antragsteller:** „Hilfe anfordern“ schickt eine Frage samt Entwurf an eine wählbare Stelle. „Begriffe erklärt“ öffnet ein Glossar in einfacher Sprache (Konstante `GLOSSAR`).
 
